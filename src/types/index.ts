@@ -1,0 +1,97 @@
+import type { PaymentMethod, SyncStatus } from '../constants/business'
+
+export interface Customer {
+  id: string
+  name: string
+  mobile: string
+  address?: string
+  totalPurchase: number
+  totalPaid: number
+  balance: number // credit owed by customer
+  createdAt: string
+  updatedAt: string
+  syncStatus: SyncStatus
+}
+
+export interface SaleItem {
+  id: string
+  saleId?: string
+  itemId?: string
+  itemName: string
+  quantity: number
+  rate: number
+  amount: number
+}
+
+export interface Sale {
+  id: string
+  invoiceNumber: string
+  customerId?: string | null
+  customerName?: string | null
+  customerMobile?: string | null
+  items: SaleItem[]
+  subtotal: number
+  discount: number
+  total: number
+  paidAmount: number
+  remainingCredit: number
+  paymentMethod: PaymentMethod
+  notes?: string
+  createdAt: string
+  syncStatus: SyncStatus
+}
+
+export interface CustomerLedgerEntry {
+  id: string
+  customerId: string
+  date: string
+  description: string
+  debit: number // increase in balance (new bill)
+  credit: number // decrease in balance (payment received)
+  balance: number
+  saleId?: string
+  createdAt: string
+  syncStatus: SyncStatus
+}
+
+export interface Mazdoor {
+  id: string
+  name: string
+  phone?: string
+  totalWork: number
+  totalPaid: number
+  balance: number
+  createdAt: string
+  updatedAt: string
+  syncStatus: SyncStatus
+}
+
+export interface MazdooriEntry {
+  id: string
+  mazdoorId: string
+  mazdoorName: string
+  workDate: string
+  workDetail: string
+  amount: number
+  paidAmount: number
+  balance: number
+  notes?: string
+  createdAt: string
+  syncStatus: SyncStatus
+}
+
+export interface BusinessSettings {
+  id?: string
+  businessName: string
+  subtitle: string
+  phone: string
+  address: string
+  logoPath?: string
+  invoicePrefix: string
+  nextInvoiceNumber: number
+  receiptPaperSize: '80mm' | '58mm' | 'A4'
+  footerText: string
+  showLogo: boolean
+  defaultPrinter?: string
+  currency: string
+}
