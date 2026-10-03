@@ -72,7 +72,7 @@ export const SearchInput = React.forwardRef<HTMLInputElement, InputProps>(
 SearchInput.displayName = 'SearchInput'
 
 export const CurrencyInput = React.forwardRef<HTMLInputElement, Omit<InputProps, 'type'>>(
-  ({ className, leftIcon, ...props }, ref) => {
+  ({ className, leftIcon: _leftIcon, ...props }, ref) => {
     return (
       <Input
         ref={ref}

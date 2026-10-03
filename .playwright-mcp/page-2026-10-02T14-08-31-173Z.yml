@@ -1,0 +1,124 @@
+- generic [ref=f8e3]:
+  - banner [ref=f8e4]:
+    - generic [ref=f8e15]:
+      - heading "Arki Press & CNC Shop" [level=1] [ref=f8e16]
+      - paragraph [ref=f8e17]: Chadar • Dabi • Chogat • Laser Cutting
+    - generic [ref=f8e18]:
+      - generic [ref=f8e21]: Fri, 02 Oct 2026
+      - generic [ref=f8e22]: 07:08 PM
+  - generic [ref=f8e23]:
+    - complementary [ref=f8e24]:
+      - navigation [ref=f8e25]:
+        - link "New Bill" [ref=f8e26] [cursor=pointer]:
+          - /url: /
+        - link "Customers" [ref=f8e31] [cursor=pointer]:
+          - /url: /customers
+        - link "Mazdoori" [ref=f8e38] [cursor=pointer]:
+          - /url: /mazdoori
+        - link "Reports" [ref=f8e44] [cursor=pointer]:
+          - /url: /reports
+        - link "Settings" [ref=f8e47] [cursor=pointer]:
+          - /url: /settings
+      - generic [ref=f8e56]:
+        - paragraph [ref=f8e57]: Simple
+        - paragraph [ref=f8e58]: Easy
+        - paragraph [ref=f8e59]: For Everyone
+    - main [ref=f8e60]:
+      - generic [ref=f8e61]:
+        - generic [ref=f8e62]:
+          - generic [ref=f8e63]:
+            - generic [ref=f8e64]:
+              - heading "New Bill" [level=1] [ref=f8e65]
+              - paragraph [ref=f8e66]: Jaldi Bill Banao, Aasaan Kaam
+            - generic [ref=f8e67]:
+              - generic [ref=f8e68]: Customer (Optional)
+              - generic [ref=f8e69]:
+                - textbox "Enter name or mobile number" [ref=f8e71]
+                - button "New Customer" [ref=f8e72]
+            - table [ref=f8e76]:
+              - rowgroup [ref=f8e77]:
+                - row [ref=f8e78]:
+                  - columnheader "#" [ref=f8e79]
+                  - columnheader "Item / Detail (Jo bhi becha hai likh do)" [ref=f8e80]
+                  - columnheader "Qty" [ref=f8e81]
+                  - columnheader "Rate (Rs)" [ref=f8e82]
+                  - columnheader "Amount (Rs)" [ref=f8e83]
+                  - columnheader [ref=f8e84]
+              - rowgroup [ref=f8e85]:
+                - row [ref=f8e86]:
+                  - cell "1" [ref=f8e87]
+                  - cell [ref=f8e88]:
+                    - textbox "Item name" [ref=f8e89]: Chadar 8x4
+                  - cell [ref=f8e90]:
+                    - spinbutton [ref=f8e91]: "2"
+                  - cell [ref=f8e92]:
+                    - spinbutton "0" [ref=f8e93]: "3200"
+                  - cell "6,400" [ref=f8e94]
+                  - cell [ref=f8e95]:
+                    - button "Delete item" [ref=f8e96]
+                - row [ref=f8e100]:
+                  - cell "2" [ref=f8e101]
+                  - cell [ref=f8e102]:
+                    - textbox "Item name" [ref=f8e103]: Dabi 10 ft
+                  - cell [ref=f8e104]:
+                    - spinbutton [ref=f8e105]: "5"
+                  - cell [ref=f8e106]:
+                    - spinbutton "0" [ref=f8e107]: "450"
+                  - cell "2,250" [ref=f8e108]
+                  - cell [ref=f8e109]:
+                    - button "Delete item" [ref=f8e110]
+                - row [ref=f8e114]:
+                  - cell "3" [ref=f8e115]
+                  - cell [ref=f8e116]:
+                    - textbox "Item name" [ref=f8e117]: Chogat
+                  - cell [ref=f8e118]:
+                    - spinbutton [ref=f8e119]: "3"
+                  - cell [ref=f8e120]:
+                    - spinbutton "0" [ref=f8e121]: "600"
+                  - cell "1,800" [ref=f8e122]
+                  - cell [ref=f8e123]:
+                    - button "Delete item" [ref=f8e124]
+                - row [ref=f8e128]:
+                  - cell "4" [ref=f8e129]
+                  - cell [ref=f8e130]:
+                    - textbox "Item name" [ref=f8e131]: CNC Cutting (Design)
+                  - cell [ref=f8e132]:
+                    - spinbutton [ref=f8e133]: "1"
+                  - cell [ref=f8e134]:
+                    - spinbutton "0" [ref=f8e135]: "1500"
+                  - cell "1,500" [ref=f8e136]
+                  - cell [ref=f8e137]:
+                    - button "Delete item" [ref=f8e138]
+            - button "Add Another Item" [ref=f8e142]
+          - textbox "Notes (Optional) - e.g. delivery, advance, etc." [ref=f8e150]
+        - generic [ref=f8e151]:
+          - generic [ref=f8e152]:
+            - heading "Bill Summary" [level=2] [ref=f8e153]
+            - generic [ref=f8e154]:
+              - generic [ref=f8e155]:
+                - generic [ref=f8e156]: Total Items
+                - generic [ref=f8e157]: "4"
+              - generic [ref=f8e158]:
+                - generic [ref=f8e159]: Total Amount
+                - generic [ref=f8e160]: Rs 11,950
+              - generic [ref=f8e161]:
+                - generic [ref=f8e162]: Paid Amount
+                - spinbutton [ref=f8e164]: "0"
+              - generic [ref=f8e165]:
+                - generic [ref=f8e166]: Remaining (Credit)
+                - generic [ref=f8e167]: Rs 11,950
+            - generic [ref=f8e168]:
+              - heading "Payment Type" [level=3] [ref=f8e169]
+              - generic [ref=f8e170]:
+                - button "◆ Cash" [ref=f8e171]:
+                  - generic [ref=f8e172]: ◆
+                  - generic [ref=f8e174]: Cash
+                - button "Bank" [ref=f8e175]
+          - generic [ref=f8e179]:
+            - button "Save Bill" [ref=f8e180]
+            - generic [ref=f8e186]:
+              - button "Send on WhatsApp" [ref=f8e187]:
+                - generic [ref=f8e190]:
+                  - generic [ref=f8e191]: Send on
+                  - generic [ref=f8e192]: WhatsApp
+              - button "Print Bill" [ref=f8e193]

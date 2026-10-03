@@ -14,21 +14,21 @@
 
 ## Phase 1 --- Project Setup
 
--   [ ] Initialize Tauri 2 + React + TypeScript
--   [ ] Configure Vite
--   [ ] Configure Tailwind CSS
--   [ ] Configure shadcn/ui
--   [ ] Configure Lucide React
--   [ ] Configure React Router
--   [ ] Configure Zustand
--   [ ] Configure React Hook Form
--   [ ] Configure Zod
--   [ ] Configure TypeScript strict mode
--   [ ] Configure ESLint
--   [ ] Configure formatting/lint scripts
--   [ ] Create project folders
--   [ ] Add environment/config strategy where needed
--   [ ] Create README
+-   [x] Initialize Tauri 2 + React + TypeScript
+-   [x] Configure Vite
+-   [x] Configure Tailwind CSS
+-   [x] Configure shadcn/ui
+-   [x] Configure Lucide React
+-   [x] Configure React Router
+-   [x] Configure Zustand
+-   [x] Configure React Hook Form
+-   [x] Configure Zod
+-   [x] Configure TypeScript strict mode
+-   [x] Configure ESLint / Oxlint
+-   [x] Configure formatting/lint scripts
+-   [x] Create project folders
+-   [x] Add environment/config strategy where needed
+-   [x] Create README
 
 ------------------------------------------------------------------------
 

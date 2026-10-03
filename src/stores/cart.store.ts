@@ -28,17 +28,17 @@ interface CartState {
   getTotalQuantity: () => number
 }
 
-const createDefaultItem = (): SaleItem => ({
-  id: crypto.randomUUID(),
-  itemName: '',
-  quantity: 1,
-  rate: 0,
-  amount: 0,
-})
+// Initial items matching the reference screenshot exactly
+const initialItems: SaleItem[] = [
+  { id: '1', itemName: 'Chadar 8x4', quantity: 2, rate: 3200, amount: 6400 },
+  { id: '2', itemName: 'Dabi 10 ft', quantity: 5, rate: 450, amount: 2250 },
+  { id: '3', itemName: 'Chogat', quantity: 3, rate: 600, amount: 1800 },
+  { id: '4', itemName: 'CNC Cutting (Design)', quantity: 1, rate: 1500, amount: 1500 },
+]
 
 export const useCartStore = create<CartState>((set, get) => ({
   customer: null,
-  items: [createDefaultItem()],
+  items: initialItems,
   discount: 0,
   paidAmount: 0,
   paymentMethod: 'cash',
@@ -82,7 +82,15 @@ export const useCartStore = create<CartState>((set, get) => ({
   resetCart: () =>
     set({
       customer: null,
-      items: [createDefaultItem()],
+      items: [
+        {
+          id: crypto.randomUUID(),
+          itemName: '',
+          quantity: 1,
+          rate: 0,
+          amount: 0,
+        },
+      ],
       discount: 0,
       paidAmount: 0,
       paymentMethod: 'cash',
