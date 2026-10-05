@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react'
+import { syncService } from '@/services/sync.service'
 import { useUIStore } from '@/stores/ui.store'
 import { cn } from '@/utils/cn'
 
@@ -40,7 +41,7 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
     return (
       <button
         type="button"
-        onClick={() => useUIStore.getState().setSyncStatus('syncing')}
+        onClick={() => syncService.processQueue()}
         className={cn(
           'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors shadow-2xs select-none cursor-pointer',
           className

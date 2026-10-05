@@ -75,23 +75,23 @@
 
 ## Phase 4 — Supabase + SQLite Foundation
 
-- [ ] Create Supabase project/schema
-- [ ] Define Supabase tables
-- [ ] Define Supabase indexes
-- [ ] Define Row Level Security policies where applicable
-- [ ] Configure Supabase client
-- [ ] Configure SQLite in Tauri
-- [ ] Create SQLite database initialization
-- [ ] Create local migrations
-- [ ] Keep Supabase and SQLite schemas aligned where synchronization requires it
-- [ ] Create local sync metadata
-- [ ] Create sync queue
-- [ ] Define entity sync states
-- [ ] Define idempotent sync operations
-- [ ] Define retry strategy
-- [ ] Define conflict handling strategy
-- [ ] Create connectivity detection
-- [ ] Create background/manual synchronization flow
+- [x] Create Supabase project/schema
+- [x] Define Supabase tables
+- [x] Define Supabase indexes
+- [x] Define Row Level Security policies where applicable
+- [x] Configure Supabase client
+- [x] Configure SQLite in Tauri
+- [x] Create SQLite database initialization
+- [x] Create local migrations
+- [x] Keep Supabase and SQLite schemas aligned where synchronization requires it
+- [x] Create local sync metadata
+- [x] Create sync queue
+- [x] Define entity sync states
+- [x] Define idempotent sync operations
+- [x] Define retry strategy
+- [x] Define conflict handling strategy
+- [x] Create connectivity detection
+- [x] Create background/manual synchronization flow
 
 ### Historical data
 
