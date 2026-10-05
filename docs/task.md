@@ -34,28 +34,28 @@
 
 ## Phase 2 --- Shared Design System
 
--   [ ] Create color tokens
--   [ ] Create typography system
--   [ ] Create Button
--   [ ] Create Input
--   [ ] Create SearchInput
--   [ ] Create NumberInput
--   [ ] Create CurrencyInput
--   [ ] Create Select
--   [ ] Create Textarea
--   [ ] Create Modal
--   [ ] Create ConfirmDialog
--   [ ] Create Card
--   [ ] Create StatCard
--   [ ] Create Badge
--   [ ] Create Table
--   [ ] Create EmptyState
--   [ ] Create LoadingState
--   [ ] Create ErrorState
--   [ ] Create PageHeader
--   [ ] Create PageLayout
--   [ ] Create Sidebar
--   [ ] Create Header
+-   [x] Create color tokens
+-   [x] Create typography system
+-   [x] Create Button
+-   [x] Create Input
+-   [x] Create SearchInput
+-   [x] Create NumberInput
+-   [x] Create CurrencyInput
+-   [x] Create Select
+-   [x] Create Textarea
+-   [x] Create Modal
+-   [x] Create ConfirmDialog
+-   [x] Create Card
+-   [x] Create StatCard
+-   [x] Create Badge
+-   [x] Create Table
+-   [x] Create EmptyState
+-   [x] Create LoadingState
+-   [x] Create ErrorState
+-   [x] Create PageHeader
+-   [x] Create PageLayout
+-   [x] Create Sidebar
+-   [x] Create Header
 
 ------------------------------------------------------------------------
 

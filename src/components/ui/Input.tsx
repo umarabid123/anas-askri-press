@@ -1,5 +1,5 @@
 import React from 'react'
-import { Search } from 'lucide-react'
+import { Minus, Plus, Search, X } from 'lucide-react'
 import { cn } from '@/utils/cn'
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -54,14 +54,31 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 
 Input.displayName = 'Input'
 
-export const SearchInput = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, placeholder = 'Search...', ...props }, ref) => {
+export interface SearchInputProps extends Omit<InputProps, 'type' | 'leftIcon'> {
+  onClear?: () => void
+}
+
+export const SearchInput = React.forwardRef<HTMLInputElement, SearchInputProps>(
+  ({ className, placeholder = 'Search...', value, onClear, onChange, ...props }, ref) => {
     return (
       <Input
         ref={ref}
-        type="search"
+        type="text"
+        value={value}
+        onChange={onChange}
         placeholder={placeholder}
-        leftIcon={<Search className="w-4 h-4 text-slate-400" />}
+        leftIcon={<Search className="w-4 h-4 text-slate-400 stroke-[2.2]" />}
+        rightIcon={
+          value && onClear ? (
+            <button
+              type="button"
+              onClick={onClear}
+              className="text-slate-400 hover:text-slate-600 pointer-events-auto transition-colors p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          ) : undefined
+        }
         className={cn('bg-slate-50 border-slate-200 focus:bg-white', className)}
         {...props}
       />
@@ -70,6 +87,87 @@ export const SearchInput = React.forwardRef<HTMLInputElement, InputProps>(
 )
 
 SearchInput.displayName = 'SearchInput'
+
+export interface NumberInputProps extends Omit<InputProps, 'type'> {
+  showStepper?: boolean
+  min?: number
+  max?: number
+  step?: number
+  onValueChange?: (val: number) => void
+}
+
+export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
+  (
+    {
+      className,
+      showStepper = false,
+      min,
+      max,
+      step = 1,
+      value,
+      onChange,
+      onValueChange,
+      ...props
+    },
+    ref
+  ) => {
+    const handleStep = (direction: 1 | -1) => {
+      const current = typeof value === 'number' ? value : parseFloat(String(value || 0))
+      const next = isNaN(current) ? 0 : current + direction * step
+      if (min !== undefined && next < min) return
+      if (max !== undefined && next > max) return
+      onValueChange?.(next)
+    }
+
+    if (!showStepper) {
+      return (
+        <Input
+          ref={ref}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={onChange}
+          className={cn('text-right font-medium', className)}
+          {...props}
+        />
+      )
+    }
+
+    return (
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => handleStep(-1)}
+          className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors shrink-0"
+        >
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <Input
+          ref={ref}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={onChange}
+          className={cn('text-center font-semibold', className)}
+          {...props}
+        />
+        <button
+          type="button"
+          onClick={() => handleStep(1)}
+          className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    )
+  }
+)
+
+NumberInput.displayName = 'NumberInput'
 
 export const CurrencyInput = React.forwardRef<HTMLInputElement, Omit<InputProps, 'type'>>(
   ({ className, leftIcon: _leftIcon, ...props }, ref) => {
@@ -80,7 +178,7 @@ export const CurrencyInput = React.forwardRef<HTMLInputElement, Omit<InputProps,
         step="any"
         min="0"
         leftIcon={<span className="text-xs font-semibold text-slate-500">Rs</span>}
-        className={cn('text-right font-medium', className)}
+        className={cn('text-right font-semibold', className)}
         {...props}
       />
     )

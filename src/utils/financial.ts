@@ -8,10 +8,11 @@ export function formatCurrency(amount: number): string {
   return `Rs ${rounded.toLocaleString('en-PK')}`
 }
 
-export function calculateItemAmount(quantity: number, rate: number): number {
+export function calculateItemAmount(quantity: number, rate: number, mazdoori: number = 0): number {
   const q = Number(quantity) || 0
   const r = Number(rate) || 0
-  return Math.round(q * r * 100) / 100
+  const m = Number(mazdoori) || 0
+  return Math.round((q * r + m) * 100) / 100
 }
 
 export function calculateSubtotal(items: Array<{ amount: number }>): number {

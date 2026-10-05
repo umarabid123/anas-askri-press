@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Customer, SaleItem } from '../types'
+import type { Customer, ItemMazdooriTask, SaleItem } from '../types'
 import { calculateCredit, calculateItemAmount, calculateSaleTotal, calculateSubtotal } from '../utils/financial'
 
 interface CartState {
@@ -15,6 +15,12 @@ interface CartState {
   addItem: (item?: Partial<SaleItem>) => void
   updateItem: (id: string, updates: Partial<SaleItem>) => void
   removeItem: (id: string) => void
+
+  // Item Mazdoori task helpers
+  addItemMazdooriTask: (itemId: string, task: Omit<ItemMazdooriTask, 'id'>) => void
+  removeItemMazdooriTask: (itemId: string, taskId: string) => void
+  updateItemMazdooriTask: (itemId: string, taskId: string, updates: Partial<ItemMazdooriTask>) => void
+
   setDiscount: (discount: number) => void
   setPaidAmount: (paid: number) => void
   setPaymentMethod: (method: 'cash' | 'bank') => void
@@ -23,6 +29,8 @@ interface CartState {
 
   // Computed getters
   getSubtotal: () => number
+  getGoodsSubtotal: () => number
+  getTotalMazdoori: () => number
   getTotal: () => number
   getCredit: () => number
   getTotalQuantity: () => number
@@ -30,10 +38,10 @@ interface CartState {
 
 // Initial items matching the reference screenshot exactly
 const initialItems: SaleItem[] = [
-  { id: '1', itemName: 'Chadar 8x4', quantity: 2, rate: 3200, amount: 6400 },
-  { id: '2', itemName: 'Dabi 10 ft', quantity: 5, rate: 450, amount: 2250 },
-  { id: '3', itemName: 'Chogat', quantity: 3, rate: 600, amount: 1800 },
-  { id: '4', itemName: 'CNC Cutting (Design)', quantity: 1, rate: 1500, amount: 1500 },
+  { id: '1', itemName: 'Chadar 8x4', quantity: 2, rate: 3200, mazdoori: 0, mazdooriTasks: [], amount: 6400 },
+  { id: '2', itemName: 'Dabi 10 ft', quantity: 5, rate: 450, mazdoori: 0, mazdooriTasks: [], amount: 2250 },
+  { id: '3', itemName: 'Chogat', quantity: 3, rate: 600, mazdoori: 0, mazdooriTasks: [], amount: 1800 },
+  { id: '4', itemName: 'CNC Cutting (Design)', quantity: 1, rate: 1500, mazdoori: 0, mazdooriTasks: [], amount: 1500 },
 ]
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -48,12 +56,17 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addItem: (item) =>
     set((state) => {
+      const quantity = item?.quantity ?? 1
+      const rate = item?.rate ?? 0
+      const mazdoori = item?.mazdoori ?? 0
       const newItem: SaleItem = {
         id: crypto.randomUUID(),
         itemName: item?.itemName || '',
-        quantity: item?.quantity ?? 1,
-        rate: item?.rate ?? 0,
-        amount: calculateItemAmount(item?.quantity ?? 1, item?.rate ?? 0),
+        quantity,
+        rate,
+        mazdoori,
+        mazdooriTasks: item?.mazdooriTasks || [],
+        amount: calculateItemAmount(quantity, rate, mazdoori),
       }
       return { items: [...state.items, newItem] }
     }),
@@ -63,7 +76,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       const items = state.items.map((item) => {
         if (item.id !== id) return item
         const updated = { ...item, ...updates }
-        updated.amount = calculateItemAmount(updated.quantity, updated.rate)
+        updated.amount = calculateItemAmount(updated.quantity, updated.rate, updated.mazdoori)
         return updated
       })
       return { items }
@@ -73,6 +86,60 @@ export const useCartStore = create<CartState>((set, get) => ({
     set((state) => ({
       items: state.items.filter((item) => item.id !== id),
     })),
+
+  addItemMazdooriTask: (itemId, task) =>
+    set((state) => {
+      const items = state.items.map((item) => {
+        if (item.id !== itemId) return item
+        const newTask: ItemMazdooriTask = {
+          id: crypto.randomUUID(),
+          title: task.title || '',
+          amount: Math.max(0, Number(task.amount) || 0),
+          mazdoorName: task.mazdoorName || '',
+        }
+        const tasks = [...(item.mazdooriTasks || []), newTask]
+        const mazdoori = tasks.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+        return {
+          ...item,
+          mazdooriTasks: tasks,
+          mazdoori,
+          amount: calculateItemAmount(item.quantity, item.rate, mazdoori),
+        }
+      })
+      return { items }
+    }),
+
+  removeItemMazdooriTask: (itemId, taskId) =>
+    set((state) => {
+      const items = state.items.map((item) => {
+        if (item.id !== itemId) return item
+        const tasks = (item.mazdooriTasks || []).filter((t) => t.id !== taskId)
+        const mazdoori = tasks.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+        return {
+          ...item,
+          mazdooriTasks: tasks,
+          mazdoori,
+          amount: calculateItemAmount(item.quantity, item.rate, mazdoori),
+        }
+      })
+      return { items }
+    }),
+
+  updateItemMazdooriTask: (itemId, taskId, updates) =>
+    set((state) => {
+      const items = state.items.map((item) => {
+        if (item.id !== itemId) return item
+        const tasks = (item.mazdooriTasks || []).map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+        const mazdoori = tasks.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)
+        return {
+          ...item,
+          mazdooriTasks: tasks,
+          mazdoori,
+          amount: calculateItemAmount(item.quantity, item.rate, mazdoori),
+        }
+      })
+      return { items }
+    }),
 
   setDiscount: (discount) => set({ discount: Math.max(0, discount) }),
   setPaidAmount: (paidAmount) => set({ paidAmount: Math.max(0, paidAmount) }),
@@ -88,6 +155,8 @@ export const useCartStore = create<CartState>((set, get) => ({
           itemName: '',
           quantity: 1,
           rate: 0,
+          mazdoori: 0,
+          mazdooriTasks: [],
           amount: 0,
         },
       ],
@@ -98,6 +167,10 @@ export const useCartStore = create<CartState>((set, get) => ({
     }),
 
   getSubtotal: () => calculateSubtotal(get().items),
+  getGoodsSubtotal: () =>
+    get().items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.rate) || 0), 0),
+  getTotalMazdoori: () =>
+    get().items.reduce((sum, it) => sum + (Number(it.mazdoori) || 0), 0),
   getTotal: () => calculateSaleTotal(get().getSubtotal(), get().discount),
   getCredit: () => calculateCredit(get().getTotal(), get().paidAmount),
   getTotalQuantity: () => get().items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0),

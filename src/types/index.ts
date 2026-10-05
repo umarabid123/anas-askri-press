@@ -13,6 +13,13 @@ export interface Customer {
   syncStatus: SyncStatus
 }
 
+export interface ItemMazdooriTask {
+  id: string
+  title: string
+  amount: number
+  mazdoorName?: string
+}
+
 export interface SaleItem {
   id: string
   saleId?: string
@@ -20,6 +27,8 @@ export interface SaleItem {
   itemName: string
   quantity: number
   rate: number
+  mazdoori: number
+  mazdooriTasks?: ItemMazdooriTask[]
   amount: number
 }
 
@@ -30,6 +39,7 @@ export interface Sale {
   customerName?: string | null
   customerMobile?: string | null
   items: SaleItem[]
+  totalMazdoori?: number
   subtotal: number
   discount: number
   total: number
