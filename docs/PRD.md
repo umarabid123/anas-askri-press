@@ -117,38 +117,67 @@ The application should be understandable by a non-technical shop user.
 
 ### 4.1 New Bill
 
+**Core principle: Bill creation is free-form. There is no product catalog.**
+The operator types item/service names directly on the bill as they sell them.
+
 The New Bill screen must support:
 
 -   Optional customer selection
 -   Customer search by name/mobile
 -   New customer creation
--   Adding multiple bill items
--   Item/detail name
+-   Free-form item rows (no catalog lookup required)
+-   Item description — typed freely each time
 -   Quantity
--   Rate
--   Automatic amount calculation
--   Add another item
--   Notes
--   Total item count
--   Total amount
+-   Rate (Rs)
+-   Mazdoori (Rs) — per-item labor charge, expandable to multiple workers
+-   Automatic amount calculation per row: `Amount = Qty × Rate + Mazdoori`
+-   Add / remove item row
+-   Bill subtotal (goods only, excluding mazdoori)
+-   Total mazdoori (shown separately)
+-   Grand total
 -   Paid amount
 -   Remaining credit
--   Cash payment
--   Bank payment
+-   Cash / Bank payment selection
+-   Notes
 -   Save Bill
--   Print Bill
--   Send on WhatsApp
+-   Print Bill (80mm thermal)
+-   Share bill as **PNG image** via WhatsApp or Files
 
 Example:
 
 ``` text
-Chadar 8x4       Qty 2    Rate 3200    Amount 6400
-Dabi 10 ft       Qty 5    Rate 450     Amount 2250
-Chogat           Qty 3    Rate 600     Amount 1800
-CNC Cutting      Qty 1    Rate 1500    Amount 1500
+Item                 Qty   Rate     Mazdoori   Amount
+Chadar 8x4           2     3200     5000       11400
+Dabi 10 ft           5     450      0          2250
+Chogat               3     600      0          1800
+                                    ────────────────
+Goods Subtotal                                 9450
+Total Mazdoori                                 5000
+Grand Total                                    14450
+Paid                                           10000
+Credit                                         4450
 ```
 
 The system must calculate totals automatically.
+
+### Mazdoori split inside a bill
+
+When a bill item has mazdoori, the operator can expand the mazdoori field
+to specify **multiple workers** who performed that labor.
+
+Example: Chadar mazdoori 5000 split between two workers:
+
+``` text
+Rashid — Chadar Bending — Rs 3000
+Imran  — Chadar Welding  — Rs 2000
+Total Mazdoori             Rs 5000
+```
+
+These worker entries are automatically posted to the Mazdoori ledger
+when the bill is saved. The operator does **not** need to re-enter them
+separately in the Mazdoori screen.
+
+The Mazdoori screen shows the accumulated worker ledger with running balances.
 
 ------------------------------------------------------------------------
 
@@ -195,23 +224,31 @@ The system must preserve historical transactions.
 
 ### 4.4 Mazdoori
 
-Mazdoori is a separate business workflow.
+Mazdoori is **separate from customer billing** but is **auto-populated
+from bills**.
+
+When a bill is saved with mazdoori task entries, each assigned worker
+automatically receives a mazdoori ledger entry. The operator does **not**
+need to go to the Mazdoori page to duplicate the entry.
+
+The Mazdoori screen shows the consolidated worker ledger.
 
 Support:
 
--   Worker/mazdoor list
--   Add worker
--   Edit worker
+-   Worker/mazdoor list (auto-populated from bill mazdoori entries)
+-   Manually add worker if needed
+-   Edit worker profile
+-   View worker transaction history
 -   Work date
 -   Worker name
--   Work/detail
--   Amount
--   Paid amount
+-   Work/task detail description
+-   Amount owed
+-   Amount paid (record payment)
 -   Remaining balance
 -   Edit entry
--   Delete entry
--   Worker history
--   Worker summary
+-   Delete/void entry with confirmation
+-   Worker full history
+-   Worker running balance
 
 Summary:
 
@@ -220,6 +257,9 @@ Total Mazdoori
 Total Paid
 Remaining Balance
 ```
+
+Important: Mazdoori entries created from bills are linked to the
+originating invoice for full audit trail.
 
 ------------------------------------------------------------------------
 
@@ -302,24 +342,40 @@ Settings must include:
 
 ## 5. Billing Rules
 
-### Total
+### Item Amount
 
 ``` text
-Item Amount = Quantity × Rate
-
-Subtotal = Sum(Item Amount)
-
-Total = Subtotal - Discount
+Item Amount = (Quantity × Rate) + Mazdoori
 ```
+
+### Totals
+
+``` text
+Goods Subtotal  = Sum(Quantity × Rate)       [mazdoori excluded]
+Total Mazdoori  = Sum(all item mazdoori)     [displayed separately]
+Grand Total     = Goods Subtotal + Total Mazdoori - Discount
+Credit          = Grand Total - Paid Amount
+```
+
+Goods Subtotal and Total Mazdoori are displayed as **separate line
+items** in the bill summary and reports, so the operator can see
+goods revenue and labor charges independently.
 
 ### Credit
 
 ``` text
-Credit = Total - Paid Amount
+Credit = Grand Total - Paid Amount
 ```
 
-Paid amount cannot exceed the bill total unless an explicit overpayment
+Paid amount cannot exceed the Grand Total unless an explicit overpayment
 workflow is introduced later.
+
+### No product catalog
+
+Items are typed free-form on every bill.
+There is no pre-defined items/products catalog.
+Historical item names are preserved in the `item_name` column of
+`sale_items` exactly as typed.
 
 ### Payment methods
 
@@ -358,21 +414,37 @@ No partially saved bill is allowed.
 
 The application should support:
 
--   Thermal receipt printing
+-   Thermal receipt printing (80mm primary target)
 -   A4 printing where practical
--   Print preview where practical
+-   Print preview
 -   Consistent invoice formatting
 -   Business information
 -   Invoice number
 -   Customer
--   Items
--   Quantity
--   Rate
--   Amount
+-   Items (free-form description, qty, rate, mazdoori, amount)
+-   Goods Subtotal (displayed separately)
+-   Total Mazdoori (displayed separately)
+-   Grand Total
 -   Paid
 -   Credit
 -   Notes
 -   Footer
+
+### Bill Sharing Format
+
+Bills are shared with customers as **PNG images**, not PDF.
+
+Reason: PNG images open instantly on any phone, can be directly sent
+through WhatsApp, and do not require a PDF viewer.
+
+Sharing workflow:
+
+1. Operator clicks **Share as Image** after saving a bill.
+2. The app renders the bill as a PNG image using the invoice template.
+3. The operator can save the PNG to files or directly share through WhatsApp.
+
+Sending to WhatsApp is done through the native OS share sheet or by
+opening a `whatsapp://send?phone=...` deeplink with the image attached.
 
 ------------------------------------------------------------------------
 
@@ -465,11 +537,12 @@ Potential future features:
 -   Supabase synchronization
 -   Multi-device support
 -   Android mobile application
--   Inventory management
+-   Inventory management (items catalog, stock tracking)
 -   Suppliers
 -   Purchases
 -   Expenses
 -   Advanced accounting
--   Automated WhatsApp Business API
+-   Automated WhatsApp Business API (currently manual OS share sheet)
 -   Role-based access
 -   Online backup
+-   PDF export (PNG is the primary V1 sharing format)

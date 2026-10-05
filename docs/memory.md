@@ -226,22 +226,35 @@ Mobile App
 
 ## Billing Model
 
+**IMPORTANT DECISION: Billing is free-form. There is NO items/product catalog.**
+
+Items are typed directly on the bill every time. There is no pre-defined item list to select from.
+
 A bill contains:
 
 ``` text
-Customer
-Items
-Quantity
-Rate
-Amount
-Subtotal
-Discount
-Total
-Paid
-Credit
-Payment Method
+Customer (optional)
+Item rows:
+  - Description  (typed freely, e.g. "Chadar 8x4", "Dabi 10 ft")
+  - Quantity
+  - Rate (Rs)
+  - Mazdoori (Rs, optional)  <-- labor charge for this line item
+  - Amount = (Qty × Rate) + Mazdoori
+
+Goods Subtotal = Sum(Qty × Rate)       -- mazdoori excluded
+Total Mazdoori = Sum(all mazdoori)     -- shown separately from goods
+Grand Total    = Goods Subtotal + Total Mazdoori - Discount
+Paid           = amount received
+Credit         = Grand Total - Paid
+Payment Method = Cash / Bank
 Notes
 ```
+
+Goods Subtotal and Total Mazdoori must be **displayed separately** on the bill
+and in reports so the operator can see goods revenue and labor charges independently.
+
+Item names are preserved exactly as typed in `sale_items.item_name`
+for historical fidelity. No catalog foreign key exists.
 
 Payment methods currently required:
 
@@ -249,6 +262,21 @@ Payment methods currently required:
 Cash
 Bank
 ```
+
+------------------------------------------------------------------------
+
+## Bill Export / Sharing Decision
+
+**Bills are shared as PNG images, not PDF.**
+
+Reason: PNG images can be sent via WhatsApp instantly without any PDF viewer.
+
+Sharing workflow:
+
+1. Operator saves the bill.
+2. Operator clicks "Share as Image".
+3. App renders the bill template as a PNG.
+4. Operator can save to disk or share via WhatsApp using the OS share sheet.
 
 ------------------------------------------------------------------------
 
@@ -274,19 +302,36 @@ Do not maintain multiple independently editable balance fields.
 
 ## Mazdoori Model
 
-Mazdoori is independent from customer billing.
+**IMPORTANT DECISION: Mazdoori entries are auto-created from bills.**
 
-Each entry contains:
+When a bill item has mazdoori, the operator can assign it to one or more workers.
+When the bill is saved, those worker entries are automatically posted to the
+Mazdoori ledger. The operator does NOT need to re-enter them manually.
+
+Each mazdoori task (per worker, per bill item) contains:
+
+``` text
+Bill reference (sale_id)
+Worker name (mazdoor)
+Task/work description
+Amount
+Date (from bill date)
+```
+
+Each mazdoor has a running ledger:
 
 ``` text
 Date
-Mazdoor
-Work/detail
-Amount
+Description (from task or manual entry)
+Amount owed
 Paid
-Balance
-Notes
+Running balance
 ```
+
+Mazdoori entries created from bills are **linked to the originating invoice**.
+
+Operators can also add standalone mazdoori entries (not linked to a bill)
+directly in the Mazdoori screen.
 
 ------------------------------------------------------------------------
 

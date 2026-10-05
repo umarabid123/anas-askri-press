@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Customer, SaleItem } from '@/types'
+import type { Customer, CustomerLedgerEntry, SaleItem } from '@/types'
 import type { CustomerFormData } from '@/schemas'
 import type { SyncQueueRecord } from '@/types/database'
 
@@ -31,6 +31,8 @@ const STORAGE_KEYS = {
   CUSTOMERS: 'arki_customers_v1',
   SALES: 'arki_sales_v1',
   SYNC_QUEUE: 'arki_sync_queue_v1',
+  LEDGER: 'arki_ledger_v1',
+  PAYMENTS: 'arki_payments_v1',
 }
 
 function getStored<T>(key: string, fallback: T): T {
@@ -131,6 +133,87 @@ export async function createCustomer(formData: CustomerFormData): Promise<Custom
   })
 
   return newCustomer
+}
+
+export async function getCustomerById(id: string): Promise<Customer | null> {
+  if (isTauri()) {
+    return invoke<Customer | null>('get_customer_by_id', { customerId: id })
+  }
+  const customers = await getCustomers()
+  return customers.find((c) => c.id === id) || null
+}
+
+export async function updateCustomer(customer: Customer): Promise<Customer> {
+  if (isTauri()) {
+    return invoke<Customer>('update_customer', { customer })
+  }
+
+  const customers = await getCustomers()
+  const index = customers.findIndex((c) => c.id === customer.id)
+  if (index !== -1) {
+    customers[index] = { ...customer, updatedAt: new Date().toISOString() }
+    setStored(STORAGE_KEYS.CUSTOMERS, customers)
+  }
+  return customer
+}
+
+export async function deleteCustomer(id: string): Promise<boolean> {
+  if (isTauri()) {
+    return invoke<boolean>('delete_customer', { customerId: id })
+  }
+
+  const customers = await getCustomers()
+  const filtered = customers.filter((c) => c.id !== id)
+  setStored(STORAGE_KEYS.CUSTOMERS, filtered)
+  return true
+}
+
+export async function getCustomerLedger(customerId: string): Promise<CustomerLedgerEntry[]> {
+  if (isTauri()) {
+    return invoke<CustomerLedgerEntry[]>('get_customer_ledger', { customerId })
+  }
+
+  const allLedgers = getStored<CustomerLedgerEntry[]>(STORAGE_KEYS.LEDGER, [])
+  return allLedgers.filter((l) => l.customerId === customerId)
+}
+
+export async function receivePayment(payment: {
+  customerId: string
+  amount: number
+  paymentMethod: string
+  notes?: string
+}): Promise<string> {
+  if (isTauri()) {
+    return invoke<string>('receive_payment', { payment })
+  }
+
+  const paymentId = `pay-${Date.now()}`
+  const customers = await getCustomers()
+  const customer = customers.find((c) => c.id === payment.customerId)
+  if (customer) {
+    customer.totalPaid += payment.amount
+    customer.balance -= payment.amount
+    customer.updatedAt = new Date().toISOString()
+    setStored(STORAGE_KEYS.CUSTOMERS, customers)
+
+    const allLedgers = getStored<CustomerLedgerEntry[]>(STORAGE_KEYS.LEDGER, [])
+    allLedgers.push({
+      id: `ledg-${Date.now()}`,
+      customerId: customer.id,
+      date: new Date().toISOString(),
+      description: payment.notes
+        ? `Payment Received (${payment.paymentMethod.toUpperCase()}) - ${payment.notes}`
+        : `Payment Received (${payment.paymentMethod.toUpperCase()})`,
+      debit: 0,
+      credit: payment.amount,
+      balance: customer.balance,
+      createdAt: new Date().toISOString(),
+      syncStatus: 'pending',
+    })
+    setStored(STORAGE_KEYS.LEDGER, allLedgers)
+  }
+
+  return paymentId
 }
 
 export async function createSale(saleInput: CreateSaleInput): Promise<string> {

@@ -27,7 +27,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             init_database,
             get_customers,
+            get_customer_by_id,
             create_customer,
+            update_customer,
+            delete_customer,
+            get_customer_ledger,
+            receive_payment,
             create_sale,
             get_sync_queue,
             update_sync_status,

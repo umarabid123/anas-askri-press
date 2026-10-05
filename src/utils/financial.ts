@@ -8,6 +8,8 @@ export function formatCurrency(amount: number): string {
   return `Rs ${rounded.toLocaleString('en-PK')}`
 }
 
+export const formatPKR = formatCurrency
+
 export function calculateItemAmount(quantity: number, rate: number, mazdoori: number = 0): number {
   const q = Number(quantity) || 0
   const r = Number(rate) || 0

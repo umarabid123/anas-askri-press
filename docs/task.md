@@ -95,6 +95,10 @@
 
 ### Historical data
 
+> **⏳ Pending client action** — These steps require the client's existing
+> business records (past invoices, customers, payments, mazdoori) to be
+> ready for import. Cannot be done by the developer alone.
+
 - [ ] Import/migrate existing client records into Supabase where required
 - [ ] Verify previous customer records
 - [ ] Verify previous sales/billing records
@@ -106,130 +110,138 @@
 
 ### SQLite tables
 
-- [ ] Create business_settings table
-- [ ] Create customers table
-- [ ] Create item_categories table
-- [ ] Create items table
-- [ ] Create sales table
-- [ ] Create sale_items table
-- [ ] Create payments table
-- [ ] Create customer_ledger table
-- [ ] Create mazdoors table
-- [ ] Create mazdoori_entries table
-- [ ] Create expenses tables
-- [ ] Create sync_queue table
-- [ ] Create sync_metadata table
-- [ ] Add indexes
-- [ ] Add foreign keys
-- [ ] Add transaction handling
-- [ ] Add seed/default settings
+- [x] Create business_settings table
+- [x] Create customers table
+- [x] Create sales table
+- [x] Create sale_items table (free-form, no catalog FK needed)
+- [x] Create sale_item_mazdoori_tasks table (multi-worker per item)
+- [x] Create payments table
+- [x] Create customer_ledger table
+- [x] Create mazdoors table
+- [x] Create mazdoori_entries table
+- [x] Create sync_queue table
+- [x] Add indexes
+- [x] Add foreign keys
+- [x] Add transaction handling
+- [x] Add seed/default settings
+- [x] No items/item_categories tables in schema (free-form billing confirmed, no catalog needed)
 
 ------------------------------------------------------------------------
 
 ## Phase 5 --- Customer Module
 
--   [ ] Customer list
--   [ ] Customer search
--   [ ] Add customer
--   [ ] Edit customer
--   [ ] Delete/archive customer
--   [ ] Customer detail
--   [ ] Customer summary
--   [ ] Customer ledger
--   [ ] Receive payment
--   [ ] Customer statement
--   [ ] New bill from customer
--   [ ] Print statement
--   [ ] Customer validation
+-   [x] Customer list
+-   [x] Customer search
+-   [x] Add customer
+-   [x] Edit customer
+-   [x] Delete/archive customer
+-   [x] Customer detail
+-   [x] Customer summary
+-   [x] Customer ledger
+-   [x] Receive payment
+-   [x] Customer statement
+-   [x] New bill from customer
+-   [x] Print statement
+-   [x] Customer validation
 
 ------------------------------------------------------------------------
 
-## Phase 6 --- Items/Services
+## Phase 6 --- [REMOVED] Items/Services Catalog
 
--   [ ] Item list
--   [ ] Add item/service
--   [ ] Edit item/service
--   [ ] Archive item/service
--   [ ] Item categories
--   [ ] Search items
--   [ ] Default rate
--   [ ] Support custom bill item
--   [ ] Preserve historical item data in sale items
+> **NOTE: No items/product catalog required.**
+> Bills use free-form item descriptions typed by the operator.
+> There is no pre-defined items or services list.
+> Item names are stored exactly as typed in `sale_items.item_name` for full historical fidelity.
+> This phase is skipped.
 
 ------------------------------------------------------------------------
 
 ## Phase 7 --- New Bill
 
+**Key principle: Free-form billing. No catalog. Items are typed directly.**
+
 -   [ ] Build New Bill UI
--   [ ] Customer selector
+-   [ ] Customer selector (optional)
 -   [ ] New customer modal
--   [ ] Add bill item
--   [ ] Edit quantity
--   [ ] Edit rate
--   [ ] Calculate item amount
--   [ ] Add/remove item
--   [ ] Calculate subtotal
+-   [ ] Add free-form item row (description, qty, rate, mazdoori)
+-   [ ] Edit quantity / rate
+-   [ ] Calculate item amount = (Qty × Rate) + Mazdoori
+-   [ ] Add/remove item row
+-   [ ] Inline mazdoori field per row
+-   [ ] Expand mazdoori to add multiple workers per item
+-   [ ] Calculate goods subtotal (excluding mazdoori)
+-   [ ] Calculate total mazdoori (shown separately)
+-   [ ] Calculate grand total = goods subtotal + mazdoori - discount
 -   [ ] Discount support
--   [ ] Calculate total
 -   [ ] Paid amount
 -   [ ] Credit calculation
--   [ ] Cash payment
--   [ ] Bank payment
+-   [ ] Cash / Bank payment
 -   [ ] Notes
--   [ ] Save bill
+-   [ ] Save bill (full atomic database transaction)
+-   [ ] Auto-post mazdoori tasks to Mazdoori ledger on save
 -   [ ] Invoice number generation
--   [ ] Database transaction
 -   [ ] Clear cart after success
--   [ ] Prevent invalid payment
+-   [ ] Prevent invalid payment amount
 -   [ ] Success feedback
+-   [ ] Print bill button (80mm thermal)
+-   [ ] Share as PNG image button
 
 ------------------------------------------------------------------------
 
 ## Phase 8 --- Printing
 
--   [ ] Create invoice template
--   [ ] Create thermal receipt template
--   [ ] Create A4 template
--   [ ] Business information
+-   [ ] Create bill invoice template
+-   [ ] Support 80mm thermal receipt (primary target)
+-   [ ] Support A4 layout where practical
+-   [ ] Show business information on bill
 -   [ ] Invoice number
 -   [ ] Customer information
--   [ ] Item rows
--   [ ] Totals
--   [ ] Payment
--   [ ] Credit
+-   [ ] Free-form item rows (description, qty, rate, mazdoori, amount)
+-   [ ] Goods subtotal line
+-   [ ] Total mazdoori line (separate)
+-   [ ] Grand total
+-   [ ] Paid amount
+-   [ ] Credit/balance
 -   [ ] Notes
 -   [ ] Footer
--   [ ] Print command
+-   [ ] Print command via Tauri native printing
 -   [ ] Printer selection
 -   [ ] Test print
 -   [ ] Print failure handling
 
 ------------------------------------------------------------------------
 
-## Phase 9 --- WhatsApp/PDF
+## Phase 9 --- Bill Sharing as PNG
 
--   [ ] Generate printable invoice
--   [ ] Generate PDF where required
--   [ ] Add share/send workflow
--   [ ] Add WhatsApp action
--   [ ] Handle missing customer phone
--   [ ] Handle sharing failure
+**Key principle: Bills are shared as PNG images, not PDF.**
+
+-   [ ] Render invoice template to PNG using canvas/webview screenshot
+-   [ ] Save PNG to local filesystem via Tauri dialog
+-   [ ] Share PNG via native OS share sheet
+-   [ ] Open WhatsApp deeplink with customer phone pre-filled
+-   [ ] Handle missing customer phone gracefully
+-   [ ] Handle sharing failure gracefully
+-   [ ] Show PNG preview before sharing
 
 ------------------------------------------------------------------------
 
 ## Phase 10 --- Mazdoori
 
--   [ ] Worker list
--   [ ] Add worker
--   [ ] Edit worker
--   [ ] Worker detail
--   [ ] Add mazdoori entry
+**Key principle: Mazdoori entries are auto-created from bills.
+Operators can also add entries manually in the Mazdoori screen.**
+
+-   [ ] Worker list (auto-populated from bill mazdoori tasks)
+-   [ ] Add worker manually
+-   [ ] Edit worker profile
+-   [ ] Worker detail page
+-   [ ] View all mazdoori entries for a worker
+-   [ ] Add mazdoori entry manually (without bill)
 -   [ ] Edit entry
--   [ ] Delete entry
--   [ ] Record paid amount
--   [ ] Calculate balance
--   [ ] Worker history
--   [ ] Mazdoori summary
+-   [ ] Delete/void entry with confirmation
+-   [ ] Record payment to worker
+-   [ ] Calculate running worker balance
+-   [ ] Worker full history
+-   [ ] Mazdoori summary (Total owed / Total paid / Remaining)
 
 ------------------------------------------------------------------------
 

@@ -129,6 +129,38 @@ fn default_payment_method() -> String {
 }
 
 // ----------------------------------------------------------------------------
+// DTOs for new commands
+// ----------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CustomerLedgerEntryDto {
+    pub id: String,
+    #[serde(rename = "customerId")]
+    pub customer_id: String,
+    pub date: String,
+    pub description: String,
+    pub debit: f64,
+    pub credit: f64,
+    pub balance: f64,
+    #[serde(rename = "saleId")]
+    pub sale_id: Option<String>,
+    #[serde(rename = "createdAt")]
+    pub created_at: String,
+    #[serde(rename = "syncStatus")]
+    pub sync_status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ReceivePaymentDto {
+    #[serde(rename = "customerId")]
+    pub customer_id: String,
+    pub amount: f64,
+    #[serde(rename = "paymentMethod")]
+    pub payment_method: String,
+    pub notes: Option<String>,
+}
+
+// ----------------------------------------------------------------------------
 // TAURI COMMANDS
 // ----------------------------------------------------------------------------
 
@@ -443,3 +475,211 @@ pub fn update_sync_status(
     ).map_err(|e| e.to_string())?;
     Ok(true)
 }
+
+#[tauri::command]
+pub fn get_customer_by_id(customer_id: String, state: State<DbState>) -> Result<Option<CustomerDto>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, name, mobile, address, total_purchase, total_paid, balance, created_at, updated_at, sync_status
+             FROM customers WHERE id = ?1"
+        )
+        .map_err(|e| e.to_string())?;
+
+    let customer = stmt
+        .query_row(params![customer_id], |row| {
+            Ok(CustomerDto {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                mobile: row.get(2)?,
+                address: row.get(3)?,
+                total_purchase: row.get(4)?,
+                total_paid: row.get(5)?,
+                balance: row.get(6)?,
+                created_at: row.get(7)?,
+                updated_at: row.get(8)?,
+                sync_status: row.get(9)?,
+            })
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    Ok(customer)
+}
+
+#[tauri::command]
+pub fn update_customer(customer: CustomerDto, state: State<DbState>) -> Result<CustomerDto, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "UPDATE customers
+         SET name = ?1,
+             mobile = ?2,
+             address = ?3,
+             updated_at = datetime('now'),
+             sync_status = 'pending'
+         WHERE id = ?4",
+        params![customer.name, customer.mobile, customer.address, customer.id],
+    ).map_err(|e| e.to_string())?;
+
+    let queue_id = Uuid::new_v4().to_string();
+    let payload = serde_json::to_string(&customer).unwrap_or_default();
+    tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'customer', ?2, 'UPDATE', ?3, 'pending')",
+        params![queue_id, customer.id, payload],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(customer)
+}
+
+#[tauri::command]
+pub fn delete_customer(customer_id: String, state: State<DbState>) -> Result<bool, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let count: i64 = tx.query_row(
+        "SELECT COUNT(*) FROM sales WHERE customer_id = ?1",
+        params![customer_id],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    if count > 0 {
+        return Err("Cannot delete customer with existing sales. Records are kept for financial audit.".to_string());
+    }
+
+    tx.execute("DELETE FROM customers WHERE id = ?1", params![customer_id]).map_err(|e| e.to_string())?;
+
+    let queue_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'customer', ?2, 'DELETE', '{}', 'pending')",
+        params![queue_id, customer_id],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn get_customer_ledger(customer_id: String, state: State<DbState>) -> Result<Vec<CustomerLedgerEntryDto>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status
+             FROM customer_ledger
+             WHERE customer_id = ?1
+             ORDER BY date ASC, created_at ASC"
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(params![customer_id], |row| {
+            Ok(CustomerLedgerEntryDto {
+                id: row.get(0)?,
+                customer_id: row.get(1)?,
+                date: row.get(2)?,
+                description: row.get(3)?,
+                debit: row.get(4)?,
+                credit: row.get(5)?,
+                balance: row.get(6)?,
+                sale_id: row.get(7)?,
+                created_at: row.get(8)?,
+                sync_status: row.get(9)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut entries = Vec::new();
+    for r in rows {
+        entries.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn receive_payment(payment: ReceivePaymentDto, state: State<DbState>) -> Result<String, String> {
+    if payment.amount <= 0.0 {
+        return Err("Payment amount must be greater than zero".to_string());
+    }
+
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let current_balance: f64 = tx.query_row(
+        "SELECT balance FROM customers WHERE id = ?1",
+        params![payment.customer_id],
+        |row| row.get(0),
+    ).map_err(|_| "Customer not found".to_string())?;
+
+    let new_balance = current_balance - payment.amount;
+
+    tx.execute(
+        "UPDATE customers
+         SET total_paid = total_paid + ?1,
+             balance = ?2,
+             updated_at = datetime('now'),
+             sync_status = 'pending'
+         WHERE id = ?3",
+        params![payment.amount, new_balance, payment.customer_id],
+    ).map_err(|e| e.to_string())?;
+
+    let payment_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO payments (id, customer_id, sale_id, amount, payment_method, notes, sync_status)
+         VALUES (?1, ?2, NULL, ?3, ?4, ?5, 'pending')",
+        params![
+            payment_id,
+            payment.customer_id,
+            payment.amount,
+            payment.payment_method,
+            payment.notes,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let ledger_id = Uuid::new_v4().to_string();
+    let desc = match &payment.notes {
+        Some(n) if !n.trim().is_empty() => format!("Payment Received ({}) - {}", payment.payment_method.to_uppercase(), n),
+        _ => format!("Payment Received ({})", payment.payment_method.to_uppercase()),
+    };
+
+    tx.execute(
+        "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, sync_status)
+         VALUES (?1, ?2, datetime('now'), ?3, 0.0, ?4, ?5, NULL, 'pending')",
+        params![
+            ledger_id,
+            payment.customer_id,
+            desc,
+            payment.amount,
+            new_balance,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let q_payment = Uuid::new_v4().to_string();
+    let p_payload = serde_json::json!({
+        "id": payment_id,
+        "customer_id": payment.customer_id,
+        "amount": payment.amount,
+        "payment_method": payment.payment_method,
+        "notes": payment.notes,
+    }).to_string();
+
+    tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'payment', ?2, 'INSERT', ?3, 'pending')",
+        params![q_payment, payment_id, p_payload],
+    ).map_err(|e| e.to_string())?;
+
+    let q_cust = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'customer', ?2, 'UPDATE', '{}', 'pending')",
+        params![q_cust, payment.customer_id],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(payment_id)
+}
+
