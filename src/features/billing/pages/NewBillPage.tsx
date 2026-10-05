@@ -64,7 +64,7 @@ export function NewBillPage() {
           {/* Header Title & Subtitle */}
           <div>
             <h1 className="text-[22px] font-bold text-slate-900 leading-tight">New Bill</h1>
-            <p className="text-[13px] text-slate-500 mt-0.5">Jaldi Bill Banao, Aasaan Kaam</p>
+            <p className="text-[13px] text-slate-500 mt-0.5">Quick & easy invoice generation</p>
           </div>
 
           {/* Customer Selection Row */}
@@ -103,7 +103,7 @@ export function NewBillPage() {
                 <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                   <th className="py-2.5 px-3 w-8 text-center">#</th>
                   <th className="py-2.5 px-3">
-                    Item / Detail <span className="font-normal text-slate-500 text-[11px]">(Jo bhi becha hai)</span>
+                    Item / Description <span className="font-normal text-slate-500 text-[11px]">(Product or service sold)</span>
                   </th>
                   <th className="py-2.5 px-2 w-16 text-center">Qty</th>
                   <th className="py-2.5 px-2 w-20 text-center">Rate (Rs)</th>
@@ -407,7 +407,7 @@ export function NewBillPage() {
               </div>
             </div>
           }
-          description="Is item ke liye multiple mazdoori kaam aur unka hisaab jorein"
+          description="Add multiple labor tasks, worker assignments, and charges for this item"
           size="lg"
           footer={
             <div className="flex items-center justify-between w-full">
@@ -457,9 +457,9 @@ export function NewBillPage() {
               {(!activeItem.mazdooriTasks || activeItem.mazdooriTasks.length === 0) ? (
                 <div className="text-center py-6 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                   <HardHat className="w-8 h-8 text-slate-300 mx-auto mb-1 stroke-[1.5]" />
-                  <p className="text-xs font-semibold text-slate-700">Koi mazdoori add nahi hui</p>
+                  <p className="text-xs font-semibold text-slate-700">No labor tasks added yet</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Upar diye gaye suggestions par click karein ya naya kaam add karein
+                    Click suggestions above or add a new task below
                   </p>
                 </div>
               ) : (
@@ -468,8 +468,8 @@ export function NewBillPage() {
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold">
                         <th className="py-2 px-3 w-8 text-center">#</th>
-                        <th className="py-2 px-3">Kaam / Task Detail</th>
-                        <th className="py-2 px-3 w-36">Karigar / Worker</th>
+                        <th className="py-2 px-3">Task Description</th>
+                        <th className="py-2 px-3 w-36">Assigned Worker</th>
                         <th className="py-2 px-3 w-28 text-center">Amount (Rs)</th>
                         <th className="py-2 px-2 w-8 text-center"></th>
                       </tr>
@@ -549,7 +549,7 @@ export function NewBillPage() {
                 className="w-full py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-purple-200"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Add Another Kaam / Task</span>
+                <span>Add Another Labor Task</span>
               </button>
             </div>
           </div>

@@ -40,7 +40,7 @@ export function CustomersPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Customers</h1>
-            <p className="text-[13px] text-slate-500 mt-0.5">Apne Customers ka Record yahan rakho</p>
+            <p className="text-[13px] text-slate-500 mt-0.5">Manage customer records and account balances</p>
           </div>
           <button
             type="button"

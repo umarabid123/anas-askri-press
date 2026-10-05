@@ -31,7 +31,7 @@ export function MazdooriPage() {
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Mazdoori</h1>
-            <p className="text-[13px] text-slate-500 mt-0.5">Mazdooron ka hisaab alag rakho</p>
+            <p className="text-[13px] text-slate-500 mt-0.5">Manage labor payments, tasks, and worker ledger</p>
           </div>
           <button
             type="button"
@@ -49,8 +49,8 @@ export function MazdooriPage() {
               <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
                 <th className="py-2.5 px-4">Date</th>
-                <th className="py-2.5 px-4">Mazdoor Name</th>
-                <th className="py-2.5 px-4">Kaam / Detail</th>
+                <th className="py-2.5 px-4">Worker Name</th>
+                <th className="py-2.5 px-4">Task / Work Detail</th>
                 <th className="py-2.5 px-4 text-center">Amount (Rs)</th>
                 <th className="py-2.5 px-4 text-center">Payment</th>
                 <th className="py-2.5 px-4 text-center">Balance</th>

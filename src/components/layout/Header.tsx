@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Calendar } from 'lucide-react'
 import { ShopLogo } from '@/components/common/ShopLogo'
+import { SyncStatusIndicator } from '@/components/common/SyncStatusIndicator'
 
 export function Header() {
   const [now, setNow] = useState(() => new Date())
@@ -40,12 +41,19 @@ export function Header() {
         </div>
       </div>
 
-      {/* Date & Time */}
-      <div className="flex items-center gap-2.5 text-slate-600 font-medium text-[13px]">
-        <Calendar className="w-4 h-4 text-slate-500 stroke-[2.2]" />
-        <span>{formattedDate}</span>
-        <span className="ml-1">{formattedTime}</span>
+      {/* Right Side: Sync status + Date & Time */}
+      <div className="flex items-center gap-4">
+        {/* Data Continuity UX */}
+        <SyncStatusIndicator />
+
+        {/* Date & Time */}
+        <div className="flex items-center gap-2 text-slate-600 font-medium text-[13px] bg-white/70 px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+          <Calendar className="w-4 h-4 text-slate-500 stroke-[2.2]" />
+          <span>{formattedDate}</span>
+          <span className="font-semibold text-slate-700 ml-0.5">{formattedTime}</span>
+        </div>
       </div>
     </header>
   )
 }
+

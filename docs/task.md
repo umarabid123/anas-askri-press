@@ -61,15 +61,15 @@
 
 ## Phase 3 --- App Shell
 
--   [ ] Build desktop layout
--   [ ] Build sidebar navigation
--   [ ] Build header
--   [ ] Add route structure
--   [ ] Add active navigation state
--   [ ] Add responsive/collapsed sidebar behavior
--   [ ] Add global modal handling if required
--   [ ] Add global error handling
--   [ ] Add loading patterns
+-   [x] Build desktop layout
+-   [x] Build sidebar navigation
+-   [x] Build header
+-   [x] Add route structure
+-   [x] Add active navigation state
+-   [x] Add responsive/collapsed sidebar behavior
+-   [x] Add global modal handling if required
+-   [x] Add global error handling
+-   [x] Add loading patterns
 
 ------------------------------------------------------------------------
 

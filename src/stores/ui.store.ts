@@ -1,12 +1,23 @@
 import { create } from 'zustand'
 import type { SyncStatus } from '../constants/business'
 
+export interface ConfirmDialogConfig {
+  title: string
+  description: string
+  confirmText?: string
+  cancelText?: string
+  variant?: 'danger' | 'warning' | 'primary' | 'success'
+  onConfirm: () => void | Promise<void>
+}
+
 interface UIState {
   sidebarCollapsed: boolean
   syncStatus: SyncStatus
   isOnline: boolean
   lastSyncTime: string | null
   activeModal: string | null
+  confirmConfig: ConfirmDialogConfig | null
+  isConfirmLoading: boolean
 
   // Actions
   toggleSidebar: () => void
@@ -16,14 +27,19 @@ interface UIState {
   setLastSyncTime: (time: string) => void
   openModal: (modalId: string) => void
   closeModal: () => void
+  openConfirm: (config: ConfirmDialogConfig) => void
+  closeConfirm: () => void
+  setConfirmLoading: (loading: boolean) => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: false,
   syncStatus: 'synced',
-  isOnline: navigator.onLine,
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   lastSyncTime: null,
   activeModal: null,
+  confirmConfig: null,
+  isConfirmLoading: false,
 
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
@@ -32,4 +48,20 @@ export const useUIStore = create<UIState>((set) => ({
   setLastSyncTime: (lastSyncTime) => set({ lastSyncTime }),
   openModal: (activeModal) => set({ activeModal }),
   closeModal: () => set({ activeModal: null }),
+  openConfirm: (confirmConfig) => set({ confirmConfig, isConfirmLoading: false }),
+  closeConfirm: () => set({ confirmConfig: null, isConfirmLoading: false }),
+  setConfirmLoading: (isConfirmLoading) => set({ isConfirmLoading }),
 }))
+
+// Auto-sync online/offline network events
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    useUIStore.getState().setIsOnline(true)
+    useUIStore.getState().setSyncStatus('synced')
+  })
+  window.addEventListener('offline', () => {
+    useUIStore.getState().setIsOnline(false)
+    useUIStore.getState().setSyncStatus('pending')
+  })
+}
+

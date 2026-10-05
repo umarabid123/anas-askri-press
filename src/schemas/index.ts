@@ -30,7 +30,7 @@ export const saleSchema = z.object({
 export type SaleFormData = z.infer<typeof saleSchema>
 
 export const mazdooriSchema = z.object({
-  mazdoorId: z.string().min(1, 'Please select or enter a mazdoor name'),
+  mazdoorId: z.string().min(1, 'Please select or enter a worker name'),
   mazdoorName: z.string().min(1, 'Worker name is required'),
   workDate: z.string().min(1, 'Work date is required'),
   workDetail: z.string().min(1, 'Work detail is required'),

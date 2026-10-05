@@ -84,7 +84,7 @@ export function ReportsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Reports</h1>
-          <p className="text-[13px] text-slate-500 mt-0.5">Apne kaam ka poora hisaab dekho</p>
+          <p className="text-[13px] text-slate-500 mt-0.5">Track financial performance, sales, and labor records</p>
         </div>
 
         {/* Date Range Selector */}
