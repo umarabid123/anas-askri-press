@@ -36,17 +36,16 @@ interface CartState {
   getTotalQuantity: () => number
 }
 
-// Initial items matching the reference screenshot exactly
-const initialItems: SaleItem[] = [
-  { id: '1', itemName: 'Chadar 8x4', quantity: 2, rate: 3200, mazdoori: 0, mazdooriTasks: [], amount: 6400 },
-  { id: '2', itemName: 'Dabi 10 ft', quantity: 5, rate: 450, mazdoori: 0, mazdooriTasks: [], amount: 2250 },
-  { id: '3', itemName: 'Chogat', quantity: 3, rate: 600, mazdoori: 0, mazdooriTasks: [], amount: 1800 },
-  { id: '4', itemName: 'CNC Cutting (Design)', quantity: 1, rate: 1500, mazdoori: 0, mazdooriTasks: [], amount: 1500 },
+const createInitialItems = (): SaleItem[] => [
+  { id: crypto.randomUUID(), itemName: 'Chadar 8x4', quantity: 2, rate: 3200, mazdoori: 0, mazdooriTasks: [], amount: 6400 },
+  { id: crypto.randomUUID(), itemName: 'Dabi 10 ft', quantity: 5, rate: 450, mazdoori: 0, mazdooriTasks: [], amount: 2250 },
+  { id: crypto.randomUUID(), itemName: 'Chogat', quantity: 3, rate: 600, mazdoori: 0, mazdooriTasks: [], amount: 1800 },
+  { id: crypto.randomUUID(), itemName: 'CNC Cutting (Design)', quantity: 1, rate: 1500, mazdoori: 0, mazdooriTasks: [], amount: 1500 },
 ]
 
 export const useCartStore = create<CartState>((set, get) => ({
   customer: null,
-  items: initialItems,
+  items: createInitialItems(),
   discount: 0,
   paidAmount: 0,
   paymentMethod: 'cash',

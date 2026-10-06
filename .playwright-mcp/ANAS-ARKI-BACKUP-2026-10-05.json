@@ -1,0 +1,239 @@
+{
+  "exportedAt": "2026-10-05T06:41:15.331Z",
+  "businessSettings": {
+    "id": "default",
+    "businessName": "ANAS ARKI PRESS & LASER CUTTING",
+    "subtitle": "PRECISION | QUALITY | MASTER CRAFTSMANSHIP",
+    "phone": "0300-7973059",
+    "address": "Dhuddi wala Lower Canal Near Askari Bandk Main Jaranwala Road",
+    "invoicePrefix": "ARKI",
+    "nextInvoiceNumber": 1001,
+    "receiptPaperSize": "A4",
+    "footerText": "Thank you for your business!",
+    "showLogo": true,
+    "currency": "PKR",
+    "currencySymbol": "Rs"
+  },
+  "customers": [
+    {
+      "id": "cust-1791181859832-m6bwc",
+      "name": "Mian Bashir & Sons Fabricators",
+      "mobile": "0301-7654321",
+      "address": "Plot 45, Industrial Estate, Gujranwala",
+      "totalPurchase": 15950,
+      "totalPaid": 15000,
+      "balance": 950,
+      "createdAt": "2026-10-05T06:30:59.832Z",
+      "updatedAt": "2026-10-05T06:32:46.248Z",
+      "syncStatus": "pending"
+    },
+    {
+      "id": "1",
+      "name": "Haji Aslam Iron Store",
+      "mobile": "0300-1234567",
+      "address": "Shop # 12, Loha Market",
+      "totalPurchase": 145000,
+      "totalPaid": 100000,
+      "balance": 45000,
+      "createdAt": "2026-10-05T06:30:59.832Z",
+      "updatedAt": "2026-10-05T06:30:59.832Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "2",
+      "name": "Tariq Fabricators",
+      "mobile": "0321-9876543",
+      "address": "Plot 4, Industrial Area",
+      "totalPurchase": 88500,
+      "totalPaid": 88500,
+      "balance": 0,
+      "createdAt": "2026-10-05T06:30:59.832Z",
+      "updatedAt": "2026-10-05T06:30:59.832Z",
+      "syncStatus": "synced"
+    }
+  ],
+  "sales": [
+    {
+      "customerId": null,
+      "customerName": null,
+      "customerMobile": null,
+      "items": [
+        {
+          "id": "1",
+          "itemName": "Chadar 8x4",
+          "quantity": 2,
+          "rate": 3200,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 6400
+        },
+        {
+          "id": "2",
+          "itemName": "Dabi 10 ft",
+          "quantity": 5,
+          "rate": 450,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 2250
+        },
+        {
+          "id": "3",
+          "itemName": "Chogat",
+          "quantity": 3,
+          "rate": 600,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 1800
+        },
+        {
+          "id": "4",
+          "itemName": "CNC Cutting (Design)",
+          "quantity": 1,
+          "rate": 1500,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 1500
+        }
+      ],
+      "subtotal": 11950,
+      "discount": 0,
+      "totalMazdoori": 0,
+      "total": 11950,
+      "paidAmount": 0,
+      "remainingCredit": 11950,
+      "paymentMethod": "cash",
+      "id": "sale-1791181619314",
+      "invoiceNumber": "ARKI-6772",
+      "createdAt": "2026-10-05T06:26:59.314Z"
+    },
+    {
+      "customerId": "cust-1791181859832-m6bwc",
+      "customerName": "Mian Bashir & Sons Fabricators",
+      "customerMobile": "0301-7654321",
+      "items": [
+        {
+          "id": "1",
+          "itemName": "Chadar 8x4",
+          "quantity": 2,
+          "rate": 3200,
+          "mazdoori": 4000,
+          "mazdooriTasks": [
+            {
+              "id": "0016917a-7fe8-4e59-923a-a44b2fc6dd4b",
+              "title": "Chadar Bending",
+              "amount": 2500,
+              "mazdoorName": "Rashid Worker"
+            },
+            {
+              "id": "d263b304-51a0-47b0-b6b0-baa9d574f8c4",
+              "title": "Laser Cutting",
+              "amount": 1500,
+              "mazdoorName": "Tariq Partner"
+            }
+          ],
+          "amount": 10400
+        },
+        {
+          "id": "2",
+          "itemName": "Dabi 10 ft",
+          "quantity": 5,
+          "rate": 450,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 2250
+        },
+        {
+          "id": "3",
+          "itemName": "Chogat",
+          "quantity": 3,
+          "rate": 600,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 1800
+        },
+        {
+          "id": "4",
+          "itemName": "CNC Cutting (Design)",
+          "quantity": 1,
+          "rate": 1500,
+          "mazdoori": 0,
+          "mazdooriTasks": [],
+          "amount": 1500
+        }
+      ],
+      "subtotal": 11950,
+      "discount": 0,
+      "totalMazdoori": 4000,
+      "total": 15950,
+      "paidAmount": 10000,
+      "remainingCredit": 5950,
+      "paymentMethod": "cash",
+      "id": "sale-1791181877265",
+      "invoiceNumber": "ARKI-6003",
+      "createdAt": "2026-10-05T06:31:17.287Z"
+    }
+  ],
+  "workers": [
+    {
+      "id": "m-1791182245600",
+      "name": "Rashid Khan (Welder)",
+      "phone": "0305-1122334",
+      "totalWork": 4500,
+      "totalPaid": 4500,
+      "balance": 0,
+      "createdAt": "2026-10-05T06:37:25.600Z",
+      "updatedAt": "2026-10-05T06:39:20.309Z",
+      "syncStatus": "pending"
+    },
+    {
+      "id": "m1",
+      "name": "Muhammad Aslam",
+      "phone": "0301-2345678",
+      "totalWork": 45000,
+      "totalPaid": 35000,
+      "balance": 10000,
+      "createdAt": "2026-10-05T06:37:25.600Z",
+      "updatedAt": "2026-10-05T06:37:25.600Z",
+      "syncStatus": "synced"
+    },
+    {
+      "id": "m2",
+      "name": "Tariq Mehmood",
+      "phone": "0312-3456789",
+      "totalWork": 32000,
+      "totalPaid": 32000,
+      "balance": 0,
+      "createdAt": "2026-10-05T06:37:25.600Z",
+      "updatedAt": "2026-10-05T06:37:25.600Z",
+      "syncStatus": "synced"
+    }
+  ],
+  "laborEntries": [
+    {
+      "id": "me-1791182360309",
+      "mazdoorId": "m-1791182245600",
+      "mazdoorName": "Rashid Khan (Welder)",
+      "workDate": "2026-10-05",
+      "workDetail": "Payment Received / Payout",
+      "amount": 0,
+      "paidAmount": 3500,
+      "balance": 0,
+      "notes": "Final settlement for chadar press",
+      "createdAt": "2026-10-05T06:39:20.309Z",
+      "syncStatus": "pending"
+    },
+    {
+      "id": "me-1791182257489",
+      "mazdoorId": "m-1791182245600",
+      "mazdoorName": "Rashid Khan (Welder)",
+      "workDate": "2026-10-05",
+      "workDetail": "Chaddar Press 20 Gauges",
+      "amount": 4500,
+      "paidAmount": 1000,
+      "balance": 3500,
+      "notes": "Cash advance on shop floor",
+      "createdAt": "2026-10-05T06:37:37.489Z",
+      "syncStatus": "pending"
+    }
+  ]
+}

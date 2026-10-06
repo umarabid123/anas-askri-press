@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { formatPKR } from '@/utils/financial'
+import { formatPKR, formatDate } from '@/utils/financial'
 import {
   getCustomerById,
   getCustomerLedger,
@@ -276,7 +276,7 @@ export function CustomerDetailPage() {
                       {index + 1}
                     </td>
                     <td className="py-3 px-4 text-xs font-medium text-slate-600 whitespace-nowrap">
-                      {entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '-'}
+                      {entry.date ? formatDate(entry.date) : '-'}
                     </td>
                     <td className="py-3 px-4 font-semibold text-slate-800 text-sm">
                       {entry.description}

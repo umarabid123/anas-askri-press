@@ -160,54 +160,54 @@
 
 **Key principle: Free-form billing. No catalog. Items are typed directly.**
 
--   [ ] Build New Bill UI
--   [ ] Customer selector (optional)
--   [ ] New customer modal
--   [ ] Add free-form item row (description, qty, rate, mazdoori)
--   [ ] Edit quantity / rate
--   [ ] Calculate item amount = (Qty × Rate) + Mazdoori
--   [ ] Add/remove item row
--   [ ] Inline mazdoori field per row
--   [ ] Expand mazdoori to add multiple workers per item
--   [ ] Calculate goods subtotal (excluding mazdoori)
--   [ ] Calculate total mazdoori (shown separately)
--   [ ] Calculate grand total = goods subtotal + mazdoori - discount
--   [ ] Discount support
--   [ ] Paid amount
--   [ ] Credit calculation
--   [ ] Cash / Bank payment
--   [ ] Notes
--   [ ] Save bill (full atomic database transaction)
--   [ ] Auto-post mazdoori tasks to Mazdoori ledger on save
--   [ ] Invoice number generation
--   [ ] Clear cart after success
--   [ ] Prevent invalid payment amount
--   [ ] Success feedback
--   [ ] Print bill button (80mm thermal)
--   [ ] Share as PNG image button
+-   [x] Build New Bill UI
+-   [x] Customer selector (optional)
+-   [x] New customer modal
+-   [x] Add free-form item row (description, qty, rate, mazdoori)
+-   [x] Edit quantity / rate
+-   [x] Calculate item amount = (Qty × Rate) + Mazdoori
+-   [x] Add/remove item row
+-   [x] Inline mazdoori field per row
+-   [x] Expand mazdoori to add multiple workers per item
+-   [x] Calculate goods subtotal (excluding mazdoori)
+-   [x] Calculate total mazdoori (shown separately)
+-   [x] Calculate grand total = goods subtotal + mazdoori - discount
+-   [x] Discount support
+-   [x] Paid amount
+-   [x] Credit calculation
+-   [x] Cash / Bank payment
+-   [x] Notes
+-   [x] Save bill (full atomic database transaction)
+-   [x] Auto-post mazdoori tasks to Mazdoori ledger on save
+-   [x] Invoice number generation
+-   [x] Clear cart after success
+-   [x] Prevent invalid payment amount
+-   [x] Success feedback
+-   [x] Print bill button (80mm thermal)
+-   [x] Share as PNG image button
 
 ------------------------------------------------------------------------
 
 ## Phase 8 --- Printing
 
--   [ ] Create bill invoice template
--   [ ] Support 80mm thermal receipt (primary target)
--   [ ] Support A4 layout where practical
--   [ ] Show business information on bill
--   [ ] Invoice number
--   [ ] Customer information
--   [ ] Free-form item rows (description, qty, rate, mazdoori, amount)
--   [ ] Goods subtotal line
--   [ ] Total mazdoori line (separate)
--   [ ] Grand total
--   [ ] Paid amount
--   [ ] Credit/balance
--   [ ] Notes
--   [ ] Footer
--   [ ] Print command via Tauri native printing
--   [ ] Printer selection
--   [ ] Test print
--   [ ] Print failure handling
+-   [x] Create bill invoice template (exact match to shop bill letterhead image)
+-   [x] Support 80mm thermal receipt (primary target)
+-   [x] Support A4 layout where practical
+-   [x] Show business information on bill
+-   [x] Invoice number
+-   [x] Customer information
+-   [x] Free-form item rows (description, qty, rate, mazdoori, amount)
+-   [x] Goods subtotal line
+-   [x] Total mazdoori line (separate)
+-   [x] Grand total
+-   [x] Paid amount
+-   [x] Credit/balance
+-   [x] Notes
+-   [x] Footer
+-   [x] Print command via Tauri native printing
+-   [x] Printer selection
+-   [x] Test print
+-   [x] Print failure handling
 
 ------------------------------------------------------------------------
 
@@ -215,13 +215,13 @@
 
 **Key principle: Bills are shared as PNG images, not PDF.**
 
--   [ ] Render invoice template to PNG using canvas/webview screenshot
--   [ ] Save PNG to local filesystem via Tauri dialog
--   [ ] Share PNG via native OS share sheet
--   [ ] Open WhatsApp deeplink with customer phone pre-filled
--   [ ] Handle missing customer phone gracefully
--   [ ] Handle sharing failure gracefully
--   [ ] Show PNG preview before sharing
+-   [x] Render invoice template to PNG using canvas/webview screenshot (html-to-image)
+-   [x] Save PNG to local filesystem via Tauri dialog
+-   [x] Share PNG via native OS share sheet
+-   [x] Open WhatsApp deeplink with customer phone pre-filled
+-   [x] Handle missing customer phone gracefully
+-   [x] Handle sharing failure gracefully
+-   [x] Show PNG preview before sharing
 
 ------------------------------------------------------------------------
 
@@ -230,49 +230,49 @@
 **Key principle: Mazdoori entries are auto-created from bills.
 Operators can also add entries manually in the Mazdoori screen.**
 
--   [ ] Worker list (auto-populated from bill mazdoori tasks)
--   [ ] Add worker manually
--   [ ] Edit worker profile
--   [ ] Worker detail page
--   [ ] View all mazdoori entries for a worker
--   [ ] Add mazdoori entry manually (without bill)
--   [ ] Edit entry
--   [ ] Delete/void entry with confirmation
--   [ ] Record payment to worker
--   [ ] Calculate running worker balance
--   [ ] Worker full history
--   [ ] Mazdoori summary (Total owed / Total paid / Remaining)
+-   [x] Worker list (auto-populated from bill mazdoori tasks)
+-   [x] Add worker manually
+-   [x] Edit worker profile
+-   [x] Worker detail page
+-   [x] View all mazdoori entries for a worker
+-   [x] Add mazdoori entry manually (without bill)
+-   [x] Edit entry
+-   [x] Delete/void entry with confirmation
+-   [x] Record payment to worker
+-   [x] Calculate running worker balance
+-   [x] Worker full history
+-   [x] Mazdoori summary (Total owed / Total paid / Remaining)
 
 ------------------------------------------------------------------------
 
 ## Phase 11 --- Reports
 
--   [ ] Reports page
--   [ ] Date range picker
--   [ ] Sales report
--   [ ] Customer report
--   [ ] Mazdoori report
--   [ ] Daily report
--   [ ] Summary cards
--   [ ] Search/filter
--   [ ] Pagination
--   [ ] View details
--   [ ] Print/export report where required
+-   [x] Reports page
+-   [x] Date range picker
+-   [x] Sales report
+-   [x] Customer report
+-   [x] Mazdoori report
+-   [x] Daily report
+-   [x] Summary cards
+-   [x] Search/filter
+-   [x] Pagination
+-   [x] View details
+-   [x] Print/export report where required
 
 ------------------------------------------------------------------------
 
 ## Phase 12 --- Settings
 
--   [ ] Business information
--   [ ] Business logo
--   [ ] Phone
--   [ ] Address
--   [ ] Invoice settings
--   [ ] Receipt settings
--   [ ] Currency settings
--   [ ] Printer settings
--   [ ] Footer settings
--   [ ] Backup settings
+-   [x] Business information
+-   [x] Business logo
+-   [x] Phone
+-   [x] Address
+-   [x] Invoice settings
+-   [x] Receipt settings
+-   [x] Currency settings
+-   [x] Printer settings
+-   [x] Footer settings
+-   [x] Backup settings
 
 ------------------------------------------------------------------------
 

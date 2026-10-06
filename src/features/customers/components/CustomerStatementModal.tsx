@@ -1,7 +1,7 @@
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Printer } from 'lucide-react'
-import { formatPKR } from '@/utils/financial'
+import { formatPKR, formatDate } from '@/utils/financial'
 import type { Customer, CustomerLedgerEntry } from '@/types'
 
 interface CustomerStatementModalProps {
@@ -93,7 +93,7 @@ export function CustomerStatementModal({
                   ledger.map((entry) => (
                     <tr key={entry.id} className="hover:bg-slate-50">
                       <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
-                        {entry.date ? new Date(entry.date).toLocaleDateString() : '-'}
+                        {entry.date ? formatDate(entry.date) : '-'}
                       </td>
                       <td className="py-2 px-3 text-slate-800 font-medium">
                         {entry.description}

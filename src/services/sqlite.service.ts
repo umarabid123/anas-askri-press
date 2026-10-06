@@ -1,5 +1,13 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Customer, CustomerLedgerEntry, SaleItem } from '@/types'
+import type {
+  BusinessSettings,
+  Customer,
+  CustomerLedgerEntry,
+  Mazdoor,
+  MazdooriEntry,
+  Sale,
+  SaleItem,
+} from '@/types'
 import type { CustomerFormData } from '@/schemas'
 import type { SyncQueueRecord } from '@/types/database'
 
@@ -33,6 +41,9 @@ const STORAGE_KEYS = {
   SYNC_QUEUE: 'arki_sync_queue_v1',
   LEDGER: 'arki_ledger_v1',
   PAYMENTS: 'arki_payments_v1',
+  MAZDOORS: 'arki_mazdoors_v1',
+  MAZDOORI_ENTRIES: 'arki_mazdoori_entries_v1',
+  SETTINGS: 'arki_settings_v1',
 }
 
 function getStored<T>(key: string, fallback: T): T {
@@ -236,8 +247,77 @@ export async function createSale(saleInput: CreateSaleInput): Promise<string> {
       target.updatedAt = new Date().toISOString()
       target.syncStatus = 'pending'
       setStored(STORAGE_KEYS.CUSTOMERS, customers)
+
+      const allLedgers = getStored<CustomerLedgerEntry[]>(STORAGE_KEYS.LEDGER, [])
+      allLedgers.push({
+        id: `ledg-${Date.now()}`,
+        customerId: target.id,
+        date: new Date().toISOString(),
+        description: `Invoice #${invoiceNumber}`,
+        debit: saleInput.total,
+        credit: saleInput.paidAmount,
+        balance: target.balance,
+        saleId: saleId,
+        createdAt: new Date().toISOString(),
+        syncStatus: 'pending',
+      })
+      setStored(STORAGE_KEYS.LEDGER, allLedgers)
     }
   }
+
+  // Auto-post mazdoori labor tasks to workers & entries
+  const workers = getStored<Mazdoor[]>(STORAGE_KEYS.MAZDOORS, [])
+  const entries = getStored<MazdooriEntry[]>(STORAGE_KEYS.MAZDOORI_ENTRIES, [])
+  const todayStr = new Date().toISOString().split('T')[0]
+
+  if (saleInput.items && Array.isArray(saleInput.items)) {
+    for (const item of saleInput.items) {
+      if (item.mazdooriTasks && item.mazdooriTasks.length > 0) {
+        for (const task of item.mazdooriTasks) {
+          if (!task.amount || task.amount <= 0) continue
+          const workerName = (task.workerName || '').trim()
+          if (!workerName) continue
+
+          let targetWorker = workers.find((w) => w.name.toLowerCase() === workerName.toLowerCase())
+          if (!targetWorker) {
+            targetWorker = {
+              id: `w-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+              name: workerName,
+              totalWork: 0,
+              totalPaid: 0,
+              balance: 0,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              syncStatus: 'pending',
+            }
+            workers.push(targetWorker)
+          }
+
+          targetWorker.totalWork = (targetWorker.totalWork || 0) + task.amount
+          targetWorker.balance = (targetWorker.balance || 0) + task.amount
+          targetWorker.updatedAt = new Date().toISOString()
+          targetWorker.syncStatus = 'pending'
+
+          entries.unshift({
+            id: `me-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+            mazdoorId: targetWorker.id,
+            mazdoorName: targetWorker.name,
+            workDate: todayStr,
+            workDetail: `${task.title} (Invoice #${invoiceNumber})`,
+            amount: task.amount,
+            paidAmount: 0,
+            balance: targetWorker.balance,
+            notes: `Auto-posted from sale #${invoiceNumber}`,
+            createdAt: new Date().toISOString(),
+            syncStatus: 'pending',
+          })
+        }
+      }
+    }
+  }
+
+  setStored(STORAGE_KEYS.MAZDOORS, workers)
+  setStored(STORAGE_KEYS.MAZDOORI_ENTRIES, entries)
 
   // Save sale
   const sales = getStored<unknown[]>(STORAGE_KEYS.SALES, [])
@@ -301,3 +381,262 @@ async function enqueueSyncRecord(record: SyncQueueRecord): Promise<void> {
   queue.push(record)
   setStored(STORAGE_KEYS.SYNC_QUEUE, queue)
 }
+
+// ----------------------------------------------------------------------------
+// Mazdoor (Worker) Services
+// ----------------------------------------------------------------------------
+
+export async function getMazdoors(): Promise<Mazdoor[]> {
+  if (isTauri()) {
+    return invoke<Mazdoor[]>('get_mazdoors')
+  }
+  return getStored<Mazdoor[]>(STORAGE_KEYS.MAZDOORS, [
+    {
+      id: 'm1',
+      name: 'Muhammad Aslam',
+      phone: '0301-2345678',
+      totalWork: 45000,
+      totalPaid: 35000,
+      balance: 10000,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+    },
+    {
+      id: 'm2',
+      name: 'Tariq Mehmood',
+      phone: '0312-3456789',
+      totalWork: 32000,
+      totalPaid: 32000,
+      balance: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+    },
+  ])
+}
+
+export async function createMazdoor(data: { name: string; phone?: string }): Promise<Mazdoor> {
+  const newWorker: Mazdoor = {
+    id: `m-${Date.now()}`,
+    name: data.name,
+    phone: data.phone || '',
+    totalWork: 0,
+    totalPaid: 0,
+    balance: 0,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    syncStatus: 'pending',
+  }
+
+  if (isTauri()) {
+    return invoke<Mazdoor>('create_mazdoor', { mazdoor: newWorker })
+  }
+
+  const workers = await getMazdoors()
+  const updated = [newWorker, ...workers]
+  setStored(STORAGE_KEYS.MAZDOORS, updated)
+  return newWorker
+}
+
+export async function updateMazdoor(worker: Mazdoor): Promise<Mazdoor> {
+  if (isTauri()) {
+    return invoke<Mazdoor>('update_mazdoor', { mazdoor: worker })
+  }
+
+  const workers = await getMazdoors()
+  const idx = workers.findIndex((w) => w.id === worker.id)
+  if (idx !== -1) {
+    workers[idx] = { ...worker, updatedAt: new Date().toISOString() }
+    setStored(STORAGE_KEYS.MAZDOORS, workers)
+  }
+  return worker
+}
+
+export async function deleteMazdoor(id: string): Promise<boolean> {
+  if (isTauri()) {
+    return invoke<boolean>('delete_mazdoor', { mazdoorId: id })
+  }
+
+  const workers = await getMazdoors()
+  const filtered = workers.filter((w) => w.id !== id)
+  setStored(STORAGE_KEYS.MAZDOORS, filtered)
+  return true
+}
+
+export async function getMazdooriEntries(mazdoorId?: string): Promise<MazdooriEntry[]> {
+  if (isTauri()) {
+    return invoke<MazdooriEntry[]>('get_mazdoori_entries', { mazdoorId: mazdoorId || null })
+  }
+
+  const all = getStored<MazdooriEntry[]>(STORAGE_KEYS.MAZDOORI_ENTRIES, [
+    {
+      id: 'me1',
+      mazdoorId: 'm1',
+      mazdoorName: 'Muhammad Aslam',
+      workDate: new Date().toISOString().slice(0, 10),
+      workDetail: 'Chadar Bending (Invoice #ARKI-1001)',
+      amount: 5000,
+      paidAmount: 0,
+      balance: 10000,
+      notes: 'Auto-posted labor task',
+      createdAt: new Date().toISOString(),
+      syncStatus: 'synced',
+    },
+    {
+      id: 'me2',
+      mazdoorId: 'm1',
+      mazdoorName: 'Muhammad Aslam',
+      workDate: new Date().toISOString().slice(0, 10),
+      workDetail: 'Payment Received / Payout',
+      amount: 0,
+      paidAmount: 2000,
+      balance: 8000,
+      notes: 'Weekly cash payout',
+      createdAt: new Date().toISOString(),
+      syncStatus: 'synced',
+    },
+  ])
+
+  if (mazdoorId) {
+    return all.filter((e) => e.mazdoorId === mazdoorId)
+  }
+  return all
+}
+
+export async function createMazdooriEntry(entry: {
+  mazdoorId: string
+  mazdoorName: string
+  workDate: string
+  workDetail: string
+  amount: number
+  paidAmount: number
+  notes?: string
+}): Promise<MazdooriEntry> {
+  const newEntry: MazdooriEntry = {
+    id: `me-${Date.now()}`,
+    mazdoorId: entry.mazdoorId,
+    mazdoorName: entry.mazdoorName,
+    workDate: entry.workDate,
+    workDetail: entry.workDetail,
+    amount: entry.amount,
+    paidAmount: entry.paidAmount,
+    balance: entry.amount - entry.paidAmount,
+    notes: entry.notes,
+    createdAt: new Date().toISOString(),
+    syncStatus: 'pending',
+  }
+
+  if (isTauri()) {
+    return invoke<MazdooriEntry>('create_mazdoori_entry', { entry: newEntry })
+  }
+
+  const workers = await getMazdoors()
+  const worker = workers.find((w) => w.id === entry.mazdoorId)
+  if (worker) {
+    worker.totalWork += entry.amount
+    worker.totalPaid += entry.paidAmount
+    worker.balance += entry.amount - entry.paidAmount
+    worker.updatedAt = new Date().toISOString()
+    setStored(STORAGE_KEYS.MAZDOORS, workers)
+    newEntry.balance = worker.balance
+  }
+
+  const entries = getStored<MazdooriEntry[]>(STORAGE_KEYS.MAZDOORI_ENTRIES, [])
+  entries.unshift(newEntry)
+  setStored(STORAGE_KEYS.MAZDOORI_ENTRIES, entries)
+  return newEntry
+}
+
+export async function deleteMazdooriEntry(id: string): Promise<boolean> {
+  if (isTauri()) {
+    return invoke<boolean>('delete_mazdoori_entry', { entryId: id })
+  }
+
+  const entries = getStored<MazdooriEntry[]>(STORAGE_KEYS.MAZDOORI_ENTRIES, [])
+  const filtered = entries.filter((e) => e.id !== id)
+  setStored(STORAGE_KEYS.MAZDOORI_ENTRIES, filtered)
+  return true
+}
+
+export async function payMazdoor(payment: {
+  mazdoorId: string
+  amount: number
+  notes?: string
+}): Promise<boolean> {
+  if (isTauri()) {
+    return invoke<boolean>('pay_mazdoor', { payment })
+  }
+
+  const workers = await getMazdoors()
+  const worker = workers.find((w) => w.id === payment.mazdoorId)
+  if (worker) {
+    worker.totalPaid += payment.amount
+    worker.balance -= payment.amount
+    worker.updatedAt = new Date().toISOString()
+    setStored(STORAGE_KEYS.MAZDOORS, workers)
+
+    const entries = getStored<MazdooriEntry[]>(STORAGE_KEYS.MAZDOORI_ENTRIES, [])
+    entries.unshift({
+      id: `me-${Date.now()}`,
+      mazdoorId: worker.id,
+      mazdoorName: worker.name,
+      workDate: new Date().toISOString().slice(0, 10),
+      workDetail: 'Payment Received / Payout',
+      amount: 0,
+      paidAmount: payment.amount,
+      balance: worker.balance,
+      notes: payment.notes || 'Payout to worker',
+      createdAt: new Date().toISOString(),
+      syncStatus: 'pending',
+    })
+    setStored(STORAGE_KEYS.MAZDOORI_ENTRIES, entries)
+  }
+  return true
+}
+
+// ----------------------------------------------------------------------------
+// Sales & Reports Services
+// ----------------------------------------------------------------------------
+
+export async function getSales(limit = 100): Promise<Sale[]> {
+  if (isTauri()) {
+    return invoke<Sale[]>('get_sales', { limit })
+  }
+  return getStored<Sale[]>(STORAGE_KEYS.SALES, [])
+}
+
+// ----------------------------------------------------------------------------
+// Business Settings Services
+// ----------------------------------------------------------------------------
+
+const DEFAULT_SETTINGS: BusinessSettings = {
+  id: 'default',
+  businessName: 'ANAS ARKI PRESS & LASER CUTTING',
+  subtitle: 'PRECISION | QUALITY | YOUR VISION OUR WORK',
+  phone: '0300-7973059',
+  address: 'Dhuddi wala Lower Canal Near Askari Bandk Main Jaranwala Road',
+  invoicePrefix: 'ARKI',
+  nextInvoiceNumber: 1001,
+  receiptPaperSize: 'A4',
+  footerText: 'Thank you for your business!',
+  showLogo: true,
+  currency: 'PKR',
+  currencySymbol: 'Rs',
+}
+
+export async function getBusinessSettings(): Promise<BusinessSettings> {
+  if (isTauri()) {
+    return invoke<BusinessSettings>('get_business_settings')
+  }
+  return getStored<BusinessSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS)
+}
+
+export async function updateBusinessSettings(settings: BusinessSettings): Promise<BusinessSettings> {
+  if (isTauri()) {
+    return invoke<BusinessSettings>('update_business_settings', { settings })
+  }
+  setStored(STORAGE_KEYS.SETTINGS, settings)
+  return settings
+}
+

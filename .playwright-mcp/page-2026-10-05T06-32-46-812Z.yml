@@ -1,0 +1,86 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e11]:
+      - heading "Arki Press & CNC Shop" [level=1] [ref=f3e12]
+      - paragraph [ref=f3e13]: Chadar • Dabi • Chogat • Laser Cutting
+    - generic [ref=f3e14]:
+      - generic "All data is synchronized and backed up." [ref=f3e201]: Synced
+      - generic [ref=f3e19]:
+        - generic [ref=f3e22]: Mon, 05 Oct 2026
+        - generic [ref=f3e23]: 11:32 AM
+  - generic [ref=f3e24]:
+    - complementary [ref=f3e25]:
+      - generic [ref=f3e26]:
+        - button "Collapse sidebar" [ref=f3e28] [cursor=pointer]
+        - navigation [ref=f3e31]:
+          - link "New Bill" [ref=f3e32] [cursor=pointer]:
+            - /url: /
+          - link "Customers" [ref=f3e37] [cursor=pointer]:
+            - /url: /customers
+          - link "Mazdoori" [ref=f3e44] [cursor=pointer]:
+            - /url: /mazdoori
+          - link "Reports" [ref=f3e50] [cursor=pointer]:
+            - /url: /reports
+          - link "Settings" [ref=f3e53] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f3e62]:
+        - paragraph [ref=f3e63]: Simple
+        - paragraph [ref=f3e64]: Easy
+        - paragraph [ref=f3e65]: For Everyone
+    - main [ref=f3e66]:
+      - generic [ref=f3e203]:
+        - generic [ref=f3e204]:
+          - generic [ref=f3e321]:
+            - generic [ref=f3e322]:
+              - button "Back to Customers" [ref=f3e323]
+              - generic [ref=f3e326]:
+                - generic [ref=f3e327]:
+                  - heading "Mian Bashir & Sons Fabricators" [level=1] [ref=f3e328]
+                  - generic [ref=f3e329]: Pending Sync
+                - paragraph [ref=f3e330]: "Mobile: 0301-7654321 • Plot 45, Industrial Estate, Gujranwala"
+            - generic [ref=f3e331]:
+              - button "New Bill" [ref=f3e332] [cursor=pointer]
+              - button "Receive Payment" [ref=f3e337] [cursor=pointer]
+              - button "Statement" [ref=f3e341] [cursor=pointer]
+              - button "Edit" [ref=f3e347] [cursor=pointer]
+          - generic [ref=f3e352]:
+            - generic [ref=f3e358]:
+              - paragraph [ref=f3e359]: Total Purchases
+              - paragraph [ref=f3e360]: Rs 15,950
+            - generic [ref=f3e366]:
+              - paragraph [ref=f3e367]: Total Paid
+              - paragraph [ref=f3e368]: Rs 15,000
+            - generic [ref=f3e373]:
+              - paragraph [ref=f3e374]: Current Balance (Credit)
+              - paragraph [ref=f3e375]: Rs 950
+        - generic [ref=f3e376]:
+          - generic [ref=f3e377]:
+            - heading "Account Ledger & Transaction History" [level=2] [ref=f3e382]
+            - textbox "Search ledger entries..." [ref=f3e384]
+          - table [ref=f3e386]:
+            - rowgroup [ref=f3e387]:
+              - row [ref=f3e388]:
+                - columnheader "#" [ref=f3e389]
+                - columnheader "Date" [ref=f3e390]
+                - columnheader "Description" [ref=f3e391]
+                - columnheader "Debit (+)" [ref=f3e392]
+                - columnheader "Credit (-)" [ref=f3e393]
+                - columnheader "Running Balance" [ref=f3e394]
+                - columnheader "Status" [ref=f3e395]
+            - rowgroup [ref=f3e396]:
+              - row [ref=f3e397]:
+                - cell "1" [ref=f3e398]
+                - cell "05/10/2026" [ref=f3e399]
+                - 'cell "Invoice #ARKI-6003" [ref=f3e400]'
+                - cell "Rs 15,950" [ref=f3e401]
+                - cell "Rs 10,000" [ref=f3e402]
+                - cell "Rs 5,950" [ref=f3e403]
+                - cell "Pending" [ref=f3e404]
+              - row [ref=f3e406]:
+                - cell "2" [ref=f3e407]
+                - cell "05/10/2026" [ref=f3e408]
+                - cell "Payment Received (CASH) - Partial payment via Cash counter" [ref=f3e409]
+                - cell "-" [ref=f3e410]
+                - cell "Rs 5,000" [ref=f3e411]
+                - cell "Rs 950" [ref=f3e412]
+                - cell "Pending" [ref=f3e413]

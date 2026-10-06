@@ -1,0 +1,102 @@
+- generic [ref=f6e3]:
+  - banner [ref=f6e4]:
+    - generic [ref=f6e11]:
+      - heading "Arki Press & CNC Shop" [level=1] [ref=f6e12]
+      - paragraph [ref=f6e13]: Chadar • Dabi • Chogat • Laser Cutting
+    - generic [ref=f6e14]:
+      - generic "All data is synchronized and backed up." [ref=f6e15]: Synced
+      - generic [ref=f6e18]:
+        - generic [ref=f6e21]: Mon, 05 Oct 2026
+        - generic [ref=f6e22]: 11:39 AM
+  - generic [ref=f6e23]:
+    - complementary [ref=f6e24]:
+      - generic [ref=f6e25]:
+        - button "Collapse sidebar" [ref=f6e27] [cursor=pointer]
+        - navigation [ref=f6e30]:
+          - link "New Bill" [ref=f6e31] [cursor=pointer]:
+            - /url: /
+          - link "Customers" [ref=f6e36] [cursor=pointer]:
+            - /url: /customers
+          - link "Mazdoori" [ref=f6e43] [cursor=pointer]:
+            - /url: /mazdoori
+          - link "Reports" [ref=f6e49] [cursor=pointer]:
+            - /url: /reports
+          - link "Settings" [ref=f6e52] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f6e61]:
+        - paragraph [ref=f6e62]: Simple
+        - paragraph [ref=f6e63]: Easy
+        - paragraph [ref=f6e64]: For Everyone
+    - main [ref=f6e65]:
+      - generic [ref=f6e66]:
+        - generic [ref=f6e67]:
+          - generic [ref=f6e68]:
+            - heading "Financial Reports" [level=1] [ref=f6e69]
+            - paragraph [ref=f6e70]: Audit business revenue, customer receivables, daily turnovers, and labor costs
+          - generic [ref=f6e71]:
+            - generic [ref=f6e72]:
+              - button "All Time" [ref=f6e73]
+              - button "Today" [ref=f6e74]
+              - button "Last 7 Days" [ref=f6e75]
+              - button "This Month" [ref=f6e76]
+            - button "Print Report" [ref=f6e77] [cursor=pointer]
+        - generic [ref=f6e83]:
+          - generic [ref=f6e84]:
+            - generic [ref=f6e85]: Total Sales
+            - paragraph [ref=f6e93]: Rs 27,900
+            - paragraph [ref=f6e94]: 2 Total Invoices
+          - generic [ref=f6e95]:
+            - generic [ref=f6e96]: Payments Received
+            - paragraph [ref=f6e102]: Rs 10,000
+            - paragraph [ref=f6e103]: Collected Revenue
+          - generic [ref=f6e104]:
+            - generic [ref=f6e105]: Client Receivables
+            - paragraph [ref=f6e113]: Rs 45,950
+            - paragraph [ref=f6e114]: Pending from Customers
+          - generic [ref=f6e115]:
+            - generic [ref=f6e116]: Labor Liability
+            - paragraph [ref=f6e124]: Rs 10,000
+            - paragraph [ref=f6e125]: Owed to Craftsmen/Workers
+        - generic [ref=f6e126]:
+          - generic [ref=f6e127]:
+            - generic [ref=f6e128]:
+              - button "Sales Report (2)" [ref=f6e129]
+              - button "Customer Balances (3)" [ref=f6e130]
+              - button "Mazdoori Report (3)" [ref=f6e131]
+              - button "Daily Breakdown (1)" [ref=f6e132]
+            - textbox "Search active report..." [ref=f6e134]
+          - table [ref=f6e137]:
+            - rowgroup [ref=f6e138]:
+              - row [ref=f6e139]:
+                - columnheader "#" [ref=f6e140]
+                - 'columnheader "Invoice #" [ref=f6e141]'
+                - columnheader "Date" [ref=f6e142]
+                - columnheader "Customer" [ref=f6e143]
+                - columnheader "Labor (Mazdoori)" [ref=f6e144]
+                - columnheader "Total Amount" [ref=f6e145]
+                - columnheader "Paid" [ref=f6e146]
+                - columnheader "Balance" [ref=f6e147]
+                - columnheader "View" [ref=f6e148]
+            - rowgroup [ref=f6e149]:
+              - row [ref=f6e150]:
+                - cell "1" [ref=f6e151]
+                - cell "ARKI-6772" [ref=f6e152]
+                - cell "05/10/2026" [ref=f6e153]
+                - cell "Cash Sale" [ref=f6e154]
+                - cell "Rs 0" [ref=f6e155]
+                - cell "Rs 11,950" [ref=f6e156]
+                - cell "Rs 0" [ref=f6e157]
+                - cell "Rs 11,950" [ref=f6e158]
+                - cell [ref=f6e159]:
+                  - button "View Invoice" [ref=f6e160]
+              - row [ref=f6e164]:
+                - cell "2" [ref=f6e165]
+                - cell "ARKI-6003" [ref=f6e166]
+                - cell "05/10/2026" [ref=f6e167]
+                - cell "Mian Bashir & Sons Fabricators" [ref=f6e168]
+                - cell "Rs 4,000" [ref=f6e169]
+                - cell "Rs 15,950" [ref=f6e170]
+                - cell "Rs 10,000" [ref=f6e171]
+                - cell "Rs 5,950" [ref=f6e172]
+                - cell [ref=f6e173]:
+                  - button "View Invoice" [ref=f6e174]

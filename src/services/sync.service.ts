@@ -174,7 +174,8 @@ class SyncService {
         // 2. Upsert Sale Items
         const items = (payload.items as Array<Record<string, unknown>>) || []
         for (const it of items) {
-          const itemId = (it.id as string) || `si-${Date.now()}`
+          const rawItemId = it.id as string | undefined
+          const itemId = rawItemId && rawItemId.length > 5 ? rawItemId : crypto.randomUUID()
           const { error: itemError } = await supabase.from('sale_items').upsert(
             {
               id: itemId,
@@ -193,7 +194,8 @@ class SyncService {
           // 3. Upsert Mazdoori Tasks for item if present
           const tasks = (it.mazdooriTasks as Array<Record<string, unknown>>) || []
           for (const task of tasks) {
-            const taskId = (task.id as string) || `task-${Date.now()}`
+            const rawTaskId = task.id as string | undefined
+            const taskId = rawTaskId && rawTaskId.length > 5 ? rawTaskId : crypto.randomUUID()
             const { error: taskError } = await supabase.from('sale_item_mazdoori_tasks').upsert(
               {
                 id: taskId,

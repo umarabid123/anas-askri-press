@@ -1,0 +1,110 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e11]:
+      - heading "Arki Press & CNC Shop" [level=1] [ref=f3e12]
+      - paragraph [ref=f3e13]: Chadar • Dabi • Chogat • Laser Cutting
+    - generic [ref=f3e14]:
+      - generic "Syncing local changes to cloud database..." [ref=f3e15]: Syncing...
+      - generic [ref=f3e19]:
+        - generic [ref=f3e22]: Mon, 05 Oct 2026
+        - generic [ref=f3e23]: 11:31 AM
+  - generic [ref=f3e24]:
+    - complementary [ref=f3e25]:
+      - generic [ref=f3e26]:
+        - button "Collapse sidebar" [ref=f3e28] [cursor=pointer]
+        - navigation [ref=f3e31]:
+          - link "New Bill" [ref=f3e32] [cursor=pointer]:
+            - /url: /
+          - link "Customers" [ref=f3e37] [cursor=pointer]:
+            - /url: /customers
+          - link "Mazdoori" [ref=f3e44] [cursor=pointer]:
+            - /url: /mazdoori
+          - link "Reports" [ref=f3e50] [cursor=pointer]:
+            - /url: /reports
+          - link "Settings" [ref=f3e53] [cursor=pointer]:
+            - /url: /settings
+      - generic [ref=f3e62]:
+        - paragraph [ref=f3e63]: Simple
+        - paragraph [ref=f3e64]: Easy
+        - paragraph [ref=f3e65]: For Everyone
+    - main [ref=f3e66]:
+      - generic [ref=f3e67]:
+        - generic [ref=f3e68]:
+          - generic [ref=f3e69]:
+            - generic [ref=f3e70]:
+              - heading "Customers" [level=1] [ref=f3e71]
+              - paragraph [ref=f3e72]: Manage client records, receivables, and transaction ledgers
+            - button "Add Customer" [ref=f3e73] [cursor=pointer]
+          - textbox "Search by name, mobile, or address..." [ref=f3e77]
+          - table [ref=f3e80]:
+            - rowgroup [ref=f3e81]:
+              - row [ref=f3e82]:
+                - columnheader "#" [ref=f3e83]
+                - columnheader "Name" [ref=f3e84]
+                - columnheader "Mobile" [ref=f3e85]
+                - columnheader "Total Purchase" [ref=f3e86]
+                - columnheader "Paid" [ref=f3e87]
+                - columnheader "Credit (Balance)" [ref=f3e88]
+                - columnheader "Actions" [ref=f3e89]
+            - rowgroup [ref=f3e90]:
+              - row [ref=f3e91]:
+                - cell "1" [ref=f3e92]
+                - cell [ref=f3e93]:
+                  - button "Mian Bashir & Sons Fabricators" [ref=f3e94]
+                  - paragraph [ref=f3e95]: Plot 45, Industrial Estate, Gujranwala
+                - cell "0301-7654321" [ref=f3e96]
+                - cell "Rs 15,950" [ref=f3e97]
+                - cell "Rs 10,000" [ref=f3e98]
+                - cell "Rs 5,950" [ref=f3e99]
+                - cell [ref=f3e100]:
+                  - generic [ref=f3e101]:
+                    - button "Create New Bill" [ref=f3e102]
+                    - button "Receive Payment" [ref=f3e106]
+                    - button "View Ledger & Statement" [ref=f3e109]
+                    - button "Edit Customer" [ref=f3e113]
+                    - button "Delete Customer" [ref=f3e117]
+              - row [ref=f3e121]:
+                - cell "2" [ref=f3e122]
+                - cell [ref=f3e123]:
+                  - button "Haji Aslam Iron Store" [ref=f3e124]
+                  - paragraph [ref=f3e125]: "Shop # 12, Loha Market"
+                - cell "0300-1234567" [ref=f3e126]
+                - cell "Rs 145,000" [ref=f3e127]
+                - cell "Rs 100,000" [ref=f3e128]
+                - cell "Rs 45,000" [ref=f3e129]
+                - cell [ref=f3e130]:
+                  - generic [ref=f3e131]:
+                    - button "Create New Bill" [ref=f3e132]
+                    - button "Receive Payment" [ref=f3e136]
+                    - button "View Ledger & Statement" [ref=f3e139]
+                    - button "Edit Customer" [ref=f3e143]
+                    - button "Delete Customer" [ref=f3e147]
+              - row [ref=f3e151]:
+                - cell "3" [ref=f3e152]
+                - cell [ref=f3e153]:
+                  - button "Tariq Fabricators" [ref=f3e154]
+                  - paragraph [ref=f3e155]: Plot 4, Industrial Area
+                - cell "0321-9876543" [ref=f3e156]
+                - cell "Rs 88,500" [ref=f3e157]
+                - cell "Rs 88,500" [ref=f3e158]
+                - cell "Rs 0" [ref=f3e159]
+                - cell [ref=f3e160]:
+                  - generic [ref=f3e161]:
+                    - button "Create New Bill" [ref=f3e162]
+                    - button "Receive Payment" [ref=f3e166]
+                    - button "View Ledger & Statement" [ref=f3e169]
+                    - button "Edit Customer" [ref=f3e173]
+                    - button "Delete Customer" [ref=f3e177]
+        - generic [ref=f3e181]:
+          - generic [ref=f3e189]:
+            - paragraph [ref=f3e190]: Total Customers
+            - paragraph [ref=f3e191]: "3"
+          - generic [ref=f3e192]:
+            - paragraph [ref=f3e193]: Total Purchase
+            - paragraph [ref=f3e194]: Rs 249,450
+          - generic [ref=f3e195]:
+            - paragraph [ref=f3e196]: Total Paid
+            - paragraph [ref=f3e197]: Rs 198,500
+          - generic [ref=f3e198]:
+            - paragraph [ref=f3e199]: Total Credit (Receivables)
+            - paragraph [ref=f3e200]: Rs 50,950

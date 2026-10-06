@@ -18,6 +18,7 @@ export interface ItemMazdooriTask {
   title: string
   amount: number
   mazdoorName?: string
+  workerName?: string
 }
 
 export interface SaleItem {
@@ -104,4 +105,5 @@ export interface BusinessSettings {
   showLogo: boolean
   defaultPrinter?: string
   currency: string
+  currencySymbol?: string
 }

@@ -36,6 +36,17 @@ pub fn run() {
             create_sale,
             get_sync_queue,
             update_sync_status,
+            get_mazdoors,
+            create_mazdoor,
+            update_mazdoor,
+            delete_mazdoor,
+            get_mazdoori_entries,
+            create_mazdoori_entry,
+            delete_mazdoori_entry,
+            pay_mazdoor,
+            get_sales,
+            get_business_settings,
+            update_business_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
