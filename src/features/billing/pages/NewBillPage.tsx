@@ -19,8 +19,11 @@ import { PAYMENT_METHODS } from '@/constants/business'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/stores/cart.store'
+import { toast } from '@/stores/toast.store'
 import { useCustomers } from '@/hooks/useCustomers'
-import { createSale } from '@/services/sqlite.service'
+import { createSale, updateSale, getSales } from '@/services/sqlite.service'
+import { saleToInvoiceData } from '../invoice-data'
+import { editBlockReason, startNewBill } from '../bill-actions'
 import { prepareBill } from '@/utils/billing'
 import { formatPKR } from '@/utils/financial'
 import { cn } from '@/utils/cn'
@@ -40,6 +43,8 @@ const COMMON_MAZDOORI_SUGGESTIONS = [
 
 export function NewBillPage() {
   const {
+    editingSale,
+    useItemsAsNewBill,
     customer,
     setCustomer,
     items,
@@ -79,7 +84,35 @@ export function NewBillPage() {
   // Saving state & feedback
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const saveLock = useRef(false)
+  const [editCheck, setEditCheck] = useState<{ id: string; reason: string | null } | null>(null)
+  const editReason = editingSale && editCheck?.id === editingSale.id ? editCheck.reason : null
+  const checkingBill = !!editingSale && editCheck?.id !== editingSale.id
+  const editBlocked = checkingBill || !!editReason
+
+  useEffect(() => useCartStore.subscribe((next, previous) => {
+    if (next.draftId === previous.draftId) return
+    setErrorMessage(null); setEditCheck(null)
+    setCustomerSearch(''); setIsCustomerDropdownOpen(false)
+    setActiveMazdooriItemId(null); setIsAddCustomerOpen(false)
+    setIsPreviewOpen(false); setPreviewInvoiceData(null)
+  }), [])
+
+  useEffect(() => {
+    if (!editingSale) return
+    let stopped = false
+    const saleId = editingSale.id
+    const check = () => {
+      getSales().then(sales => {
+        if (!stopped) setEditCheck({ id: saleId, reason: editBlockReason(saleId, sales) })
+      }).catch(() => {
+        if (!stopped) setEditCheck({ id: saleId, reason: 'Could not check this bill. Reopen it from the bill list and try again.' })
+      })
+    }
+    check()
+    window.addEventListener('focus', check)
+    return () => { stopped = true; window.removeEventListener('focus', check) }
+  }, [editingSale])
 
   // Mazdoori task form inside active item modal
   const [newMazdooriTitle, setNewMazdooriTitle] = useState('')
@@ -142,21 +175,27 @@ export function NewBillPage() {
   // Perform Save Bill Transaction
   const handleSaveBill = async (andThen?: 'preview' | 'whatsapp' | 'print'): Promise<string | null> => {
     setErrorMessage(null)
-    setSuccessMessage(null)
 
-    if (isSaving) return null
+    if (saveLock.current || editBlocked) return null
+    saveLock.current = true
+    useCartStore.getState().setSavingBill(true)
     setIsSaving(true)
     try {
+      if (editingSale) {
+        const reason = editBlockReason(editingSale.id, await getSales())
+        if (reason) { setEditCheck({ id: editingSale.id, reason }); return null }
+      }
       const bill = prepareBill(items, discount, paidAmount)
       const validItems = bill.items
-      const invoiceNumber = await createSale({
+      const input = {
         ...bill,
         customerId: customer?.id || null,
         customerName: customer?.name || null,
         customerMobile: customer?.mobile || null,
         paymentMethod,
         notes: notes.trim() || undefined,
-      })
+      }
+      const invoiceNumber = editingSale ? await updateSale(editingSale.id, input) : await createSale(input)
 
       const invoiceData: ShopInvoiceData = {
         invoiceNumber,
@@ -175,10 +214,11 @@ export function NewBillPage() {
         paymentMethod: paymentMethod,
       }
 
-      setPreviewInvoiceData(invoiceData)
-      setIsPreviewOpen(true)
+      const saved = (await getSales().catch(() => [])).find(sale => sale.invoiceNumber === invoiceNumber)
       resetCart()
-      setSuccessMessage(`Invoice #${invoiceNumber} saved successfully!`)
+      setPreviewInvoiceData(saved ? saleToInvoiceData(saved, customer) : invoiceData)
+      setIsPreviewOpen(true)
+      toast.success(`Bill #${invoiceNumber} ${editingSale ? 'updated' : 'saved'}.`)
 
       if (andThen === 'print') {
         setTimeout(() => { getBusinessSettings().then(settings => printDocument('shop-invoice-canvas', settings.receiptPaperSize)).catch(err => setErrorMessage(String(err))) }, 300)
@@ -188,8 +228,15 @@ export function NewBillPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setErrorMessage(msg)
+      toast.error(msg)
+      if (editingSale) {
+        const latest = await getSales().catch(() => null)
+        if (latest) setEditCheck({ id: editingSale.id, reason: editBlockReason(editingSale.id, latest) })
+      }
       return null
     } finally {
+      saveLock.current = false
+      useCartStore.getState().setSavingBill(false)
       setIsSaving(false)
     }
   }
@@ -230,22 +277,24 @@ export function NewBillPage() {
     setIsPreviewOpen(false)
     setPreviewInvoiceData(null)
     setErrorMessage(null)
-    setSuccessMessage(null)
   }
 
   return (
     <div className="grid grid-cols-12 gap-5 items-stretch min-h-full">
       {/* Left Column: Bill Entry Form (8 cols) */}
-      <div className="col-span-8 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
+      <div className="col-span-12 xl:col-span-8 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
         <div className="space-y-4">
           {/* Header Title & Subtitle */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-[22px] font-bold text-slate-900 leading-tight">New Bill</h1>
+              <h1 className="text-[22px] font-bold text-slate-900 leading-tight">{editReason ? 'Bill Cannot Be Edited' : editingSale ? 'Edit Bill' : 'New Bill'}</h1>
               <p className="text-[13px] text-slate-500 mt-0.5">
-                Generate free-form invoices with itemized labor & instant PNG export
+                {editingSale ? `Editing bill #${editingSale.invoiceNumber}. Change the items, rates, or mazdoori below.` : 'Add the work or items, enter payment received, then save the bill.'}
               </p>
             </div>
+            <Button type="button" variant="outline" disabled={isSaving} onClick={() => { startNewBill() }} className="flex items-center gap-1.5">
+              <Plus className="w-4 h-4" /> New Bill
+            </Button>
             {customer && (
               <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl">
                 <User className="w-4 h-4 text-blue-600" />
@@ -254,6 +303,7 @@ export function NewBillPage() {
                 <button
                   type="button"
                   onClick={handleClearCustomer}
+                  disabled={!!editingSale}
                   className="text-blue-400 hover:text-blue-700 ml-1"
                   title="Clear customer"
                 >
@@ -263,22 +313,27 @@ export function NewBillPage() {
             )}
           </div>
 
+          {editingSale && (
+            <div role={editReason ? 'alert' : 'status'} className={`p-3 text-sm border rounded-xl ${editReason ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-blue-50 text-blue-900 border-blue-200'}`}>
+              <p className="font-semibold">{checkingBill ? 'Checking this bill...' : editReason || 'You can edit this bill and save your changes.'}</p>
+              <p className="mt-1">{editReason ? 'Your entered items are still here. Use them in a new bill, or start with a blank bill.' : 'Save Changes keeps the previous copy in history and creates an updated bill. The customer and payment already received stay the same.'}</p>
+              <div className="flex flex-wrap gap-3 mt-3">
+                <Button type="button" size="sm" disabled={isSaving} onClick={useItemsAsNewBill}>Use Items as New Bill</Button>
+                <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { startNewBill() }}>Start Blank Bill</Button>
+              </div>
+            </div>
+          )}
           {errorMessage && (
             <div className="p-3 text-xs bg-red-50 text-red-700 border border-red-200 rounded-xl">
               {errorMessage}
             </div>
           )}
 
-          {successMessage && (
-            <div className="p-3 text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl">
-              {successMessage}
-            </div>
-          )}
 
           {/* Customer Selection Row */}
-          <div>
+          <fieldset disabled={!!editingSale}>
             <label className="block text-[13px] font-semibold text-slate-800 mb-1.5">
-              Customer <span className="font-normal text-slate-500">(Optional - Walk-in cash or account client)</span>
+              Customer <span className="font-normal text-slate-500">(Choose a customer if any amount is unpaid)</span>
             </label>
             <div className="flex items-center gap-3">
               <div className="flex-1 relative" ref={dropdownRef}>
@@ -347,7 +402,7 @@ export function NewBillPage() {
                 <span>New Customer</span>
               </button>
             </div>
-          </div>
+          </fieldset>
 
           {/* Items Table with Mazdoori Column */}
           <div className="border border-slate-200/80 rounded-xl overflow-hidden">
@@ -520,7 +575,7 @@ export function NewBillPage() {
       </div>
 
       {/* Right Column: Bill Summary (4 cols) */}
-      <div className="col-span-4 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
+      <div className="col-span-12 xl:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
         <div className="space-y-4">
           <h2 className="text-[20px] font-bold text-slate-900">Bill Summary</h2>
 
@@ -574,13 +629,14 @@ export function NewBillPage() {
 
             <div className="flex justify-between items-center text-slate-700">
               <div className="flex items-center gap-2">
-                <span>Paid Amount</span>
+                <span>Payment Received</span>
                 <button
                   type="button"
                   onClick={() => setPaidAmount(total)}
+                  disabled={!!editingSale}
                   className="text-[11px] text-blue-600 hover:underline font-semibold"
                 >
-                  (Full)
+                  Paid in Full
                 </button>
               </div>
               <div className="w-28">
@@ -588,6 +644,7 @@ export function NewBillPage() {
                   type="number"
                   min="0"
                   value={paidAmount || ''}
+                  disabled={!!editingSale}
                   placeholder="0"
                   onChange={(e) => setPaidAmount(Number(e.target.value) || 0)}
                   className="w-full h-8 px-2.5 text-right font-bold text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -596,7 +653,7 @@ export function NewBillPage() {
             </div>
 
             <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-              <span className="font-bold text-red-600 text-[15px]">Remaining (Credit)</span>
+              <span className="font-bold text-red-600 text-[15px]">Amount Unpaid (Udhaar)</span>
               <span className="font-bold text-red-600 text-[18px]">
                 Rs {credit.toLocaleString()}
               </span>
@@ -605,11 +662,12 @@ export function NewBillPage() {
 
           {/* Payment Type Section */}
           <div className="pt-2">
-            <h3 className="text-[13px] font-bold text-slate-800 mb-2">Payment Type</h3>
+            <h3 className="text-[13px] font-bold text-slate-800 mb-2">Paid by</h3>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setPaymentMethod(PAYMENT_METHODS.CASH)}
+                disabled={!!editingSale}
                 className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${
                   paymentMethod === PAYMENT_METHODS.CASH
                     ? 'bg-[#E8F8F0] border-emerald-400 text-[#065F46] shadow-2xs'
@@ -625,6 +683,7 @@ export function NewBillPage() {
               <button
                 type="button"
                 onClick={() => setPaymentMethod(PAYMENT_METHODS.BANK)}
+                disabled={!!editingSale}
                 className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${
                   paymentMethod === PAYMENT_METHODS.BANK
                     ? 'bg-[#EAF2FD] border-blue-400 text-blue-700 shadow-2xs'
@@ -643,7 +702,7 @@ export function NewBillPage() {
           {/* Save Bill Button */}
           <button
             type="button"
-            disabled={isSaving}
+            disabled={isSaving || editBlocked}
             onClick={() => handleSaveBill()}
             className="w-full py-3.5 bg-[#0F8A4B] hover:bg-[#0c743e] disabled:opacity-50 text-white font-bold text-[16px] rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
           >
@@ -652,7 +711,7 @@ export function NewBillPage() {
             ) : (
               <FileCheck className="w-5 h-5 stroke-[2.2]" />
             )}
-            <span>{isSaving ? 'Saving Invoice...' : 'Save Bill'}</span>
+            <span>{isSaving ? 'Saving...' : checkingBill ? 'Checking Bill...' : editReason ? 'Cannot Update This Bill' : editingSale ? 'Save Changes' : 'Save Bill'}</span>
           </button>
 
           {/* Secondary Actions */}
@@ -660,13 +719,13 @@ export function NewBillPage() {
             {/* WhatsApp */}
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || editBlocked}
               onClick={() => handleSaveBill('whatsapp')}
               className="py-2.5 px-3 bg-[#EAF9F1] hover:bg-emerald-100/70 border border-emerald-300 rounded-xl flex items-center justify-center gap-2 text-[#047857] text-xs font-bold transition-colors cursor-pointer"
             >
               <MessageCircle className="w-4 h-4 fill-emerald-600 text-emerald-600 stroke-white stroke-[2]" />
               <div className="text-left leading-tight">
-                <div>Share as PNG</div>
+                <div>Save &amp; Share</div>
                 <div>WhatsApp</div>
               </div>
             </button>
@@ -674,12 +733,12 @@ export function NewBillPage() {
             {/* Print Bill */}
             <button
               type="button"
-              disabled={isSaving}
+              disabled={isSaving || editBlocked}
               onClick={() => handleSaveBill('print')}
               className="py-2.5 px-3 bg-[#F1F5F9] hover:bg-slate-200 border border-slate-200 rounded-xl flex items-center justify-center gap-2 text-slate-800 text-xs font-bold transition-colors cursor-pointer"
             >
               <Printer className="w-4 h-4 stroke-[2.2]" />
-              <span>Print Bill</span>
+              <span>Save &amp; Print</span>
             </button>
           </div>
         </div>
@@ -696,9 +755,9 @@ export function NewBillPage() {
                 <HardHat className="w-4 h-4 stroke-[2.2]" />
               </div>
               <div>
-                <h3 className="text-base font-bold text-slate-900 leading-tight">Mazdoori Breakdown</h3>
+                <h3 className="text-base font-bold text-slate-900 leading-tight">Mazdoori Details</h3>
                 <p className="text-xs text-slate-500 font-normal">
-                  Add multiple partner / labor worker tasks for "{activeItem.itemName || 'this item'}"
+                  Add each worker's work and amount for "{activeItem.itemName || 'this item'}"
                 </p>
               </div>
             </div>
@@ -713,7 +772,7 @@ export function NewBillPage() {
               </p>
               {(!activeItem.mazdooriTasks || activeItem.mazdooriTasks.length === 0) ? (
                 <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  No breakdown tasks yet. Use the form below or pick a suggestion.
+                  No work added yet. Add the work and amount below.
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto">
@@ -787,7 +846,7 @@ export function NewBillPage() {
 
               <input
                 type="text"
-                placeholder="Worker / Partner Name (Optional, e.g. Aslam)"
+                placeholder="Worker name (optional, e.g. Aslam)"
                 value={newMazdooriWorker}
                 onChange={(e) => setNewMazdooriWorker(e.target.value)}
                 className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-purple-500"

@@ -22,7 +22,8 @@ import {
   receivePayment,
   getSales,
 } from '@/services/sqlite.service'
-import { useCartStore } from '@/stores/cart.store'
+import { startNewBill } from '@/features/billing/bill-actions'
+import { toast } from '@/stores/toast.store'
 import { ROUTES } from '@/constants/routes'
 import { EditCustomerModal } from '../components/EditCustomerModal'
 import { ReceivePaymentModal } from '../components/ReceivePaymentModal'
@@ -30,12 +31,12 @@ import { CustomerStatementModal } from '../components/CustomerStatementModal'
 import { BillPreviewModal } from '@/features/billing/components/BillPreviewModal'
 import type { ShopInvoiceData } from '@/features/billing/components/ShopInvoiceTemplate'
 import { saleToInvoiceData } from '@/features/billing/invoice-data'
+import { billStatus, ledgerEntryStatus } from '../entry-status'
 import type { Customer, CustomerLedgerEntry, Sale } from '@/types'
 
 export function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const setCustomerInCart = useCartStore((s) => s.setCustomer)
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [ledger, setLedger] = useState<CustomerLedgerEntry[]>([])
@@ -75,8 +76,7 @@ export function CustomerDetailPage() {
 
   const handleNewBill = () => {
     if (!customer) return
-    setCustomerInCart(customer)
-    navigate(ROUTES.NEW_BILL)
+    if (startNewBill(customer)) navigate(ROUTES.NEW_BILL)
   }
 
   const handleUpdateCustomer = async (updated: Customer) => {
@@ -99,7 +99,7 @@ export function CustomerDetailPage() {
   // Open an invoice (from a ledger row or the invoices tab) in the bill preview popup
   const handleViewInvoice = (saleId: string) => {
     const sale = sales.find((s) => s.id === saleId)
-    if (!sale) { alert('Invoice not found.'); return }
+    if (!sale) { toast.error('Bill not found. Refresh the list and try again.'); return }
     setSelectedInvoice(saleToInvoiceData(sale, customer))
   }
 
@@ -298,7 +298,7 @@ export function CustomerDetailPage() {
                 <th className="py-2.5 px-4 text-right">Debit (+)</th>
                 <th className="py-2.5 px-4 text-right">Credit (-)</th>
                 <th className="py-2.5 px-4 text-right">Running Balance</th>
-                <th className="py-2.5 px-4 text-center w-28">Status</th>
+                <th className="py-2.5 px-4 text-center w-36">Entry Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -312,6 +312,7 @@ export function CustomerDetailPage() {
               ) : (
                 filteredLedger.map((entry, index) => {
                   const saleId = entry.saleId
+                  const status = ledgerEntryStatus(entry, sales)
                   return (
                   <tr
                     key={entry.id}
@@ -338,8 +339,8 @@ export function CustomerDetailPage() {
                       Rs {entry.balance.toLocaleString()}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <Badge variant={entry.syncStatus === 'synced' ? 'success' : 'warning'}>
-                        {entry.syncStatus === 'synced' ? 'Synced' : 'Pending'}
+                      <Badge variant={status.variant} title={status.detail} className="whitespace-nowrap">
+                        {status.label}
                       </Badge>
                     </td>
                   </tr>
@@ -361,7 +362,7 @@ export function CustomerDetailPage() {
                 <th className="py-2.5 px-4 text-right">Total</th>
                 <th className="py-2.5 px-4 text-right">Paid</th>
                 <th className="py-2.5 px-4 text-right">Balance</th>
-                <th className="py-2.5 px-4 text-center w-28">Status</th>
+                <th className="py-2.5 px-4 text-center w-36">Bill Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -387,7 +388,7 @@ export function CustomerDetailPage() {
                     <td className="py-3 px-4 text-right font-semibold text-emerald-600 text-sm">{formatPKR(sale.paidAmount)}</td>
                     <td className="py-3 px-4 text-right font-bold text-sm text-slate-900">{formatPKR(sale.remainingCredit)}</td>
                     <td className="py-3 px-4 text-center">
-                      {sale.cancelledAt ? <Badge variant="danger">Cancelled</Badge> : <Badge variant="success">Active</Badge>}
+                      <Badge variant={billStatus(sale).variant} title={billStatus(sale).detail} className="whitespace-nowrap">{billStatus(sale).label}</Badge>
                     </td>
                   </tr>
                 ))

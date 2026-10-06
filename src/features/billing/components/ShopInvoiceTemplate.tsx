@@ -83,7 +83,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
       <div id={id} ref={ref} className="bg-white p-3 text-black font-sans select-text" style={{ width: settings.receiptPaperSize, fontSize: settings.receiptPaperSize === '58mm' ? 10 : 12 }}>
         <div className="text-center border-b border-black pb-2"><h1 className="font-bold text-sm">{rawShopName}</h1><p>{address}</p><p>{phone}</p></div>
         <p className="font-bold mt-2">Invoice {data.invoiceNumber}</p><p>{formattedDate} · {data.paymentMethod.toUpperCase()}</p>
-        {data.cancelledAt && <p className="text-center font-bold border border-black my-1">*** CANCELLED ***</p>}
+        {data.cancelledAt && <p className="text-center font-bold border border-black my-1">*** {data.cancelReason?.startsWith('Updated:') ? 'OLD BILL' : 'CANCELLED'} ***</p>}
         <p>{customerName || 'Cash Customer'} {customerPhone}</p>
         {customerAddress && <p>{customerAddress}</p>}
         <div className="border-y border-dashed border-black my-2 py-2">
@@ -109,7 +109,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
         {data.cancelledAt && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
             <div className="border-[6px] border-red-600/80 text-red-600/80 font-black text-7xl tracking-widest px-10 py-3 rounded-xl -rotate-12">
-              CANCELLED
+              {data.cancelReason?.startsWith('Updated:') ? 'OLD BILL' : 'CANCELLED'}
             </div>
           </div>
         )}

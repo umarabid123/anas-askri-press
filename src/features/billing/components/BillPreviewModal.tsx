@@ -3,11 +3,16 @@ import { createPortal } from 'react-dom'
 import { saveFile, openWhatsApp } from '@/services/files.service'
 import { printDocument } from '@/utils/printing'
 import { toBlob } from 'html-to-image'
-import { Ban, Download, MessageCircle, Printer, X, Loader2 } from 'lucide-react'
+import { Ban, Download, MessageCircle, Printer, X, Loader2, Pencil, Plus } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ROUTES } from '@/constants/routes'
+import { useCartStore } from '@/stores/cart.store'
+import { toast } from '@/stores/toast.store'
+import { confirmLeaveDraft, startNewBill } from '../bill-actions'
 import { Button } from '@/components/ui/Button'
 import { ShopInvoiceTemplate, type ShopInvoiceData } from './ShopInvoiceTemplate'
 import { CancelInvoiceDialog } from './CancelInvoiceDialog'
-import { getBusinessSettings } from '@/services/sqlite.service'
+import { getBusinessSettings, getSales, getCustomerById } from '@/services/sqlite.service'
 import type { BusinessSettings } from '@/types'
 
 interface BillPreviewModalProps {
@@ -28,13 +33,39 @@ export function BillPreviewModal({
   onNewBill,
   onCancelled,
 }: BillPreviewModalProps) {
+  const navigate = useNavigate()
   const invoiceRef = useRef<HTMLDivElement>(null)
   const pngCache = useRef<Blob | null>(null)
   const [isGeneratingPng, setIsGeneratingPng] = useState(false)
-  const [exportError, setExportError] = useState('')
+  const [exportError, updateExportError] = useState('')
+  const setExportError = (message: string) => { updateExportError(message); if (message) toast.error(message) }
   const [shareNotice, setShareNotice] = useState('')
   const [settings, setSettings] = useState<BusinessSettings | null>(null)
   const [isCancelOpen, setIsCancelOpen] = useState(false)
+  const [isOpeningEdit, setIsOpeningEdit] = useState(false)
+
+  const handleNewBill = () => {
+    if (!startNewBill()) return
+    onNewBill()
+    onClose()
+    navigate(ROUTES.NEW_BILL)
+  }
+  const handleEditBill = async (asNew = false) => {
+    if (!data || !confirmLeaveDraft()) return
+    setIsOpeningEdit(true); setExportError('')
+    try {
+      const sale = (await getSales()).find(s => s.id === data.saleId || s.invoiceNumber === data.invoiceNumber)
+      if (!sale) throw new Error('Bill not found. Close this window and try again.')
+      if (sale.cancelledAt && !asNew) throw new Error('This is an old or cancelled bill. It cannot be edited. Start a New Bill instead.')
+      const customer = sale.customerId ? await getCustomerById(sale.customerId) : null
+      if (sale.customerId && !customer) throw new Error('The customer record is missing. Restore it before editing this bill.')
+      useCartStore.getState().editBill(sale, customer)
+      if (asNew) useCartStore.getState().useItemsAsNewBill()
+      onClose()
+      navigate(ROUTES.NEW_BILL)
+    } catch (err) { setExportError(err instanceof Error ? err.message : String(err)) }
+    finally { setIsOpeningEdit(false) }
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -76,7 +107,9 @@ export function BillPreviewModal({
   const handleDownloadPng = async (): Promise<boolean> => {
     setIsGeneratingPng(true); setExportError(''); setShareNotice('')
     try {
-      return await saveFile(pngFileName, await generatePngBlob())
+      const saved = await saveFile(pngFileName, await generatePngBlob())
+      if (saved) toast.success('Bill image saved.')
+      return saved
     } catch (err) { setExportError(err instanceof Error ? err.message : String(err)); return false }
     finally { setIsGeneratingPng(false) }
   }
@@ -110,6 +143,7 @@ export function BillPreviewModal({
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': image })])
       await openWhatsApp(`https://wa.me/${formattedPhone}`)
       setShareNotice('Invoice image copied. In the WhatsApp chat press Ctrl+V, then Send.')
+      toast.info('Bill image copied. Paste it into WhatsApp with Ctrl+V.')
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setExportError('Could not share the invoice image: ' + (err instanceof Error ? err.message : String(err)) + '. Use Save PNG Image and attach it in WhatsApp.')
@@ -125,29 +159,29 @@ export function BillPreviewModal({
     <div role="dialog" aria-modal="true" aria-label="Invoice preview" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static">
       <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col overflow-hidden max-h-[96vh] print:max-w-none print:shadow-none print:max-h-none print:rounded-none">
         {/* Modal Header Bar (Hidden during print) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               {data.cancelledAt ? (
                 <>
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                  Invoice Cancelled: {data.invoiceNumber}
+                  {data.cancelReason?.startsWith('Updated:') ? 'Old Bill' : 'Cancelled Bill'}: {data.invoiceNumber}
                 </>
               ) : (
                 <>
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  {data.saleId ? 'Invoice' : 'Invoice Created'}: {data.invoiceNumber}
+                  Bill: {data.invoiceNumber}
                 </>
               )}
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               {data.cancelledAt
-                ? 'Kept for history only. Reason: ' + (data.cancelReason || 'not given')
-                : 'Review invoice, save PNG image, share with customer, or print thermal/sheet receipt.'}
+                ? 'This bill cannot be edited. Use its items in a new bill, or start a blank New Bill. ' + (data.cancelReason || '')
+                : 'Print, share, or edit this bill. Start another bill with New Bill.'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             {/* Download PNG Button */}
             <Button
               variant="outline"
@@ -160,7 +194,7 @@ export function BillPreviewModal({
               ) : (
                 <Download className="w-4 h-4 text-blue-600" />
               )}
-              <span>{isGeneratingPng ? 'Generating PNG...' : 'Save PNG Image'}</span>
+              <span>{isGeneratingPng ? 'Preparing image...' : 'Save Image'}</span>
             </Button>
 
             {/* WhatsApp Share Button */}
@@ -196,18 +230,29 @@ export function BillPreviewModal({
         {exportError && <p role="alert" className="p-3 text-red-700 bg-red-50 print:hidden">{exportError}</p>}
         {shareNotice && <p role="status" className="p-3 text-emerald-800 bg-emerald-50 font-medium print:hidden">{shareNotice}</p>}
         {/* Modal Scrollable Canvas Container */}
-        <div className="p-6 bg-slate-100 overflow-auto flex justify-center print:p-0 print:bg-white">
-          <div className="bg-white shadow-lg print:shadow-none">
+        <div className="p-6 bg-slate-100 overflow-auto print:p-0 print:bg-white">
+          <div className="bg-white shadow-lg w-max mx-auto print:w-full print:shadow-none">
             <ShopInvoiceTemplate ref={invoiceRef} data={data} settings={settings} />
           </div>
         </div>
 
         {/* Modal Footer Controls (Hidden during print) */}
-        <div className="flex items-center justify-between px-6 py-3 border-t border-slate-200 bg-white print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-t border-slate-200 bg-white print:hidden">
           <p className="text-xs text-slate-500">
             WhatsApp shares the invoice image only. Paste it in the chat with Ctrl+V, then Send.
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {!data.cancelledAt && (
+              <Button variant="outline" onClick={() => handleEditBill()} disabled={isOpeningEdit} className="flex items-center gap-1.5">
+                <Pencil className="w-4 h-4" />
+                {isOpeningEdit ? 'Opening...' : 'Edit Bill'}
+              </Button>
+            )}
+            {data.cancelledAt && (
+              <Button variant="outline" onClick={() => handleEditBill(true)} disabled={isOpeningEdit}>
+                {isOpeningEdit ? 'Opening...' : 'Use Items as New Bill'}
+              </Button>
+            )}
             {data.saleId && !data.cancelledAt && (
               <Button
                 variant="outline"
@@ -215,17 +260,17 @@ export function BillPreviewModal({
                 className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
               >
                 <Ban className="w-4 h-4" />
-                <span>Cancel Invoice</span>
+                <span>Cancel Bill</span>
               </Button>
             )}
             <Button variant="outline" onClick={onClose}>
               Close
             </Button>
             <Button
-              onClick={onNewBill}
+              onClick={handleNewBill}
               className="bg-[#1877F2] hover:bg-blue-600 text-white"
             >
-              Create Another Bill
+              <Plus className="w-4 h-4 mr-1" /> New Bill
             </Button>
           </div>
         </div>

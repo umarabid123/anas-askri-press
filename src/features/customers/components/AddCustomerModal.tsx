@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { customerSchema, type CustomerFormData } from '@/schemas'
+import { toast } from '@/stores/toast.store'
 import type { Customer } from '@/types'
 
 interface AddCustomerModalProps {
@@ -37,11 +38,13 @@ export function AddCustomerModal({ isOpen, onClose, onAdd }: AddCustomerModalPro
     setIsSubmitting(true)
     try {
       await onAdd(validation.data)
+      toast.success('Customer added.')
       setName('')
       setMobile('')
       setAddress('')
       onClose()
     } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Could not add the customer.')
       setErrors({
         general: err instanceof Error ? err.message : 'Failed to add customer',
       })
