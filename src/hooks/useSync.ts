@@ -12,7 +12,7 @@ export function useSync() {
   const triggerSync = async (): Promise<SyncResult> => {
     setIsProcessing(true)
     try {
-      return await syncService.processQueue()
+      return await syncService.processQueue(true)
     } finally {
       setIsProcessing(false)
     }

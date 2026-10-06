@@ -30,7 +30,7 @@ pub struct ItemMazdooriTaskDto {
     pub id: Option<String>,
     pub title: String,
     pub amount: f64,
-    #[serde(rename = "workerName")]
+    #[serde(rename = "workerName", alias = "mazdoorName")]
     pub worker_name: Option<String>,
 }
 
@@ -189,6 +189,7 @@ pub struct PayMazdoorDto {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SaleRecordDto {
+    pub items: Vec<SaleItemDto>,
     pub id: String,
     #[serde(rename = "invoiceNumber")]
     pub invoice_number: String,
@@ -210,9 +211,29 @@ pub struct SaleRecordDto {
     #[serde(rename = "paymentMethod")]
     pub payment_method: String,
     pub notes: Option<String>,
+    #[serde(rename = "cancelledAt")]
+    pub cancelled_at: Option<String>,
+    #[serde(rename = "cancelReason")]
+    pub cancel_reason: Option<String>,
     #[serde(rename = "createdAt")]
     pub created_at: String,
     #[serde(rename = "syncStatus")]
+    pub sync_status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExpenseDto {
+    pub id: String,
+    #[serde(rename = "expenseDate")]
+    pub expense_date: String,
+    pub category: String,
+    pub description: Option<String>,
+    pub amount: f64,
+    #[serde(rename = "paymentMethod", default = "default_payment_method")]
+    pub payment_method: String,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: Option<String>,
+    #[serde(rename = "syncStatus", default = "default_sync_status")]
     pub sync_status: String,
 }
 
@@ -293,6 +314,7 @@ pub fn get_customers(state: State<DbState>) -> Result<Vec<CustomerDto>, String> 
 
 #[tauri::command]
 pub fn create_customer(customer: CustomerDto, state: State<DbState>) -> Result<CustomerDto, String> {
+    if customer.name.trim().len()<2 || customer.mobile.trim().len()<10 || customer.total_purchase != 0.0 || customer.total_paid != 0.0 || customer.balance != 0.0 { return Err("Invalid customer profile".into()); }
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -354,28 +376,42 @@ pub fn create_customer(customer: CustomerDto, state: State<DbState>) -> Result<C
 }
 
 #[tauri::command]
-pub fn create_sale(sale: CreateSaleDto, state: State<DbState>) -> Result<String, String> {
+pub fn create_sale(mut sale: CreateSaleDto, state: State<DbState>) -> Result<String, String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
+    if sale.items.is_empty() || !sale.discount.is_finite() || sale.discount < 0.0 || !sale.paid_amount.is_finite() || sale.paid_amount < 0.0 || !["cash", "bank"].contains(&sale.payment_method.as_str()) { return Err("Invalid bill or payment".into()); }
+    let mut goods = 0.0; let mut labor = 0.0; let mut gross = 0.0;
+    for item in &mut sale.items {
+        if item.item_name.trim().is_empty() || !item.quantity.is_finite() || item.quantity <= 0.0 || !item.rate.is_finite() || item.rate < 0.0 || !item.mazdoori.is_finite() || item.mazdoori < 0.0 { return Err("Enter valid item descriptions, quantities and amounts".into()); }
+        let task_total: f64 = item.mazdoori_tasks.iter().map(|t| t.amount).sum();
+        if item.mazdoori_tasks.iter().any(|t| t.title.trim().is_empty() || !t.amount.is_finite() || t.amount <= 0.0) || (!item.mazdoori_tasks.is_empty() && (task_total-item.mazdoori).abs()>0.01) { return Err("Invalid labor breakdown".into()); }
+        item.item_name = item.item_name.trim().to_string();
+        item.amount = ((item.quantity*item.rate + item.mazdoori)*100.0).round()/100.0;
+        goods += item.amount-item.mazdoori; labor += item.mazdoori; gross += item.amount;
+    }
+    sale.subtotal = (goods*100.0).round()/100.0; sale.total_mazdoori = (labor*100.0).round()/100.0;
+    sale.total = ((gross-sale.discount)*100.0).round()/100.0;
+    sale.paid_amount = (sale.paid_amount*100.0).round()/100.0;
+    if !sale.total.is_finite() || sale.total > 9_999_999_999.99 || sale.total <= 0.0 || sale.paid_amount > sale.total { return Err("Payment cannot exceed a positive bill total".into()); }
+    sale.remaining_credit = ((sale.total-sale.paid_amount)*100.0).round()/100.0;
+    if sale.remaining_credit > 0.0 && sale.customer_id.as_ref().is_none_or(|id| id.is_empty()) { return Err("Select a customer for a credit bill".into()); }
     let sale_id = Uuid::new_v4().to_string();
 
-    // Generate invoice number if not provided
     let invoice_number = match sale.invoice_number {
-        Some(ref inv) if !inv.is_empty() => inv.clone(),
+        Some(ref inv) if !inv.trim().is_empty() => inv.trim().to_string(),
         _ => {
-            let mut prefix_stmt = tx.prepare("SELECT invoice_prefix, next_invoice_number FROM business_settings WHERE id = 'default'")
-                .map_err(|e| e.to_string())?;
-            let (prefix, next_num): (String, i64) = prefix_stmt.query_row([], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            }).unwrap_or(("ARKI".to_string(), 1001));
-
-            tx.execute(
-                "UPDATE business_settings SET next_invoice_number = next_invoice_number + 1 WHERE id = 'default'",
-                [],
-            ).map_err(|e| e.to_string())?;
-
-            format!("{}-{}", prefix, next_num)
+            let (prefix, mut sequence): (String, i64) = tx.query_row("SELECT invoice_prefix,next_invoice_number FROM business_settings WHERE id='default'", [], |r| Ok((r.get(0)?,r.get(1)?))).map_err(|e| e.to_string())?;
+            if sequence<1 || prefix.trim().is_empty() { return Err("Invalid invoice settings".into()); }
+            let mut number = format!("{}-{:04}",prefix,sequence);
+            loop {
+                let count: i64 = tx.query_row("SELECT COUNT(*) FROM sales WHERE invoice_number=?1",params![number],|r|r.get(0)).map_err(|e|e.to_string())?;
+                if count==0 { break; }
+                sequence = sequence.checked_add(1).ok_or("Invoice sequence overflow")?;
+                number = format!("{}-{:04}",prefix,sequence);
+            }
+            tx.execute("UPDATE business_settings SET next_invoice_number=?1 WHERE id='default'",params![sequence.checked_add(1).ok_or("Invoice sequence overflow")?]).map_err(|e|e.to_string())?;
+            number
         }
     };
 
@@ -474,7 +510,7 @@ pub fn create_sale(sale: CreateSaleDto, state: State<DbState>) -> Result<String,
                     let work_detail = format!("{} (Invoice #{})", task.title, invoice_number);
                     tx.execute(
                         "INSERT INTO mazdoori_entries (id, mazdoor_id, mazdoor_name, work_date, work_detail, amount, paid_amount, balance, notes, sync_status)
-                         VALUES (?1, ?2, ?3, date('now'), ?4, ?5, 0.0, ?6, ?7, 'pending')",
+                         VALUES (?1, ?2, ?3, date('now','localtime'), ?4, ?5, 0.0, ?6, ?7, 'pending')",
                         params![
                             entry_id,
                             worker_id,
@@ -565,7 +601,7 @@ pub fn create_sale(sale: CreateSaleDto, state: State<DbState>) -> Result<String,
 #[tauri::command]
 pub fn get_sync_queue(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SyncQueueItemDto>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let limit_val = limit.unwrap_or(50);
+    let limit_val = limit.unwrap_or(-1);
     let mut stmt = conn
         .prepare(
             "SELECT id, entity_type, entity_id, operation, payload, status, retry_count, last_error, created_at, updated_at
@@ -607,6 +643,7 @@ pub fn update_sync_status(
     last_error: Option<String>,
     state: State<DbState>,
 ) -> Result<bool, String> {
+    if !["pending", "syncing", "synced", "failed"].contains(&status.as_str()) { return Err("Invalid synchronization status".into()); }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "UPDATE sync_queue
@@ -617,6 +654,20 @@ pub fn update_sync_status(
          WHERE id = ?3",
         params![status, last_error, queue_id],
     ).map_err(|e| e.to_string())?;
+    if status == "synced" {
+        let entity: Option<(String, String)> = conn.query_row("SELECT entity_type,entity_id FROM sync_queue WHERE id=?1", params![queue_id], |r| Ok((r.get(0)?, r.get(1)?))).optional().map_err(|e| e.to_string())?;
+        if let Some((kind, id)) = entity {
+            let table = match kind.as_str() {
+                "customer" | "customers" => Some("customers"), "sale" | "sales" => Some("sales"),
+                "mazdoor" | "mazdoors" => Some("mazdoors"), "payment" | "payments" => Some("payments"),
+                "customer_ledger" => Some("customer_ledger"), "mazdoori_entry" | "mazdoori_entries" => Some("mazdoori_entries"), "expense" | "expenses" => Some("expenses"), _ => None,
+            };
+            if let Some(table) = table {
+                let pending: i64 = conn.query_row("SELECT COUNT(*) FROM sync_queue WHERE entity_id=?1 AND status <> 'synced'", params![id], |r| r.get(0)).map_err(|e| e.to_string())?;
+                if pending == 0 { conn.execute(&format!("UPDATE {table} SET sync_status='synced' WHERE id=?1"), params![id]).map_err(|e| e.to_string())?; }
+            }
+        }
+    }
     Ok(true)
 }
 
@@ -653,6 +704,7 @@ pub fn get_customer_by_id(customer_id: String, state: State<DbState>) -> Result<
 
 #[tauri::command]
 pub fn update_customer(customer: CustomerDto, state: State<DbState>) -> Result<CustomerDto, String> {
+    if customer.name.trim().len()<2 || customer.mobile.trim().len()<10 { return Err("Invalid customer profile".into()); }
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -685,10 +737,10 @@ pub fn delete_customer(customer_id: String, state: State<DbState>) -> Result<boo
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     let count: i64 = tx.query_row(
-        "SELECT COUNT(*) FROM sales WHERE customer_id = ?1",
+        "SELECT (SELECT COUNT(*) FROM sales WHERE customer_id = ?1) + (SELECT COUNT(*) FROM payments WHERE customer_id = ?1) + (SELECT COUNT(*) FROM customer_ledger WHERE customer_id = ?1)",
         params![customer_id],
         |row| row.get(0),
-    ).unwrap_or(0);
+    ).map_err(|e| e.to_string())?;
 
     if count > 0 {
         return Err("Cannot delete customer with existing sales. Records are kept for financial audit.".to_string());
@@ -744,21 +796,24 @@ pub fn get_customer_ledger(customer_id: String, state: State<DbState>) -> Result
 }
 
 #[tauri::command]
-pub fn receive_payment(payment: ReceivePaymentDto, state: State<DbState>) -> Result<String, String> {
-    if payment.amount <= 0.0 {
+pub fn receive_payment(mut payment: ReceivePaymentDto, state: State<DbState>) -> Result<String, String> {
+    payment.amount = (payment.amount*100.0).round()/100.0;
+    if !payment.amount.is_finite() || payment.amount <= 0.0 {
         return Err("Payment amount must be greater than zero".to_string());
     }
 
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
+    if !["cash", "bank"].contains(&payment.payment_method.as_str()) { return Err("Choose cash or bank".into()); }
     let current_balance: f64 = tx.query_row(
         "SELECT balance FROM customers WHERE id = ?1",
         params![payment.customer_id],
         |row| row.get(0),
     ).map_err(|_| "Customer not found".to_string())?;
 
-    let new_balance = current_balance - payment.amount;
+    if payment.amount > current_balance { return Err("Payment cannot exceed outstanding balance".into()); }
+    let new_balance = ((current_balance - payment.amount)*100.0).round()/100.0;
 
     tx.execute(
         "UPDATE customers
@@ -862,6 +917,7 @@ pub fn get_mazdoors(state: State<DbState>) -> Result<Vec<MazdoorDto>, String> {
 
 #[tauri::command]
 pub fn create_mazdoor(mazdoor: MazdoorDto, state: State<DbState>) -> Result<MazdoorDto, String> {
+    if mazdoor.name.trim().len()<2 || mazdoor.total_work != 0.0 || mazdoor.total_paid != 0.0 || mazdoor.balance != 0.0 { return Err("Invalid worker profile".into()); }
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -900,6 +956,7 @@ pub fn create_mazdoor(mazdoor: MazdoorDto, state: State<DbState>) -> Result<Mazd
 
 #[tauri::command]
 pub fn update_mazdoor(mazdoor: MazdoorDto, state: State<DbState>) -> Result<MazdoorDto, String> {
+    if mazdoor.name.trim().len()<2 { return Err("Invalid worker name".into()); }
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -1009,12 +1066,15 @@ pub fn get_mazdoori_entries(
 
 #[tauri::command]
 pub fn create_mazdoori_entry(
-    entry: MazdooriEntryDto,
+    mut entry: MazdooriEntryDto,
     state: State<DbState>,
 ) -> Result<MazdooriEntryDto, String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
+    entry.amount = (entry.amount*100.0).round()/100.0; entry.paid_amount = (entry.paid_amount*100.0).round()/100.0;
+    if chrono::NaiveDate::parse_from_str(&entry.work_date, "%Y-%m-%d").is_err() { return Err("Invalid work date".into()); }
+    if !entry.amount.is_finite() || entry.amount <= 0.0 || !entry.paid_amount.is_finite() || entry.paid_amount < 0.0 || entry.paid_amount > entry.amount || entry.work_detail.trim().is_empty() { return Err("Invalid work entry or advance".into()); }
     let id = if entry.id.is_empty() {
         Uuid::new_v4().to_string()
     } else {
@@ -1070,40 +1130,19 @@ pub fn create_mazdoori_entry(
 pub fn delete_mazdoori_entry(entry_id: String, state: State<DbState>) -> Result<bool, String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
-
-    let (mazdoor_id, amount, paid_amount): (String, f64, f64) = tx.query_row(
-        "SELECT mazdoor_id, amount, paid_amount FROM mazdoori_entries WHERE id = ?1",
-        params![entry_id],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-    ).map_err(|_| "Entry not found".to_string())?;
-
-    let cur_balance: f64 = tx.query_row(
-        "SELECT balance FROM mazdoors WHERE id = ?1",
-        params![mazdoor_id],
-        |r| r.get(0),
-    ).unwrap_or(0.0);
-
-    let net_change = amount - paid_amount;
-    let new_balance = cur_balance - net_change;
-
-    tx.execute(
-        "UPDATE mazdoors
-         SET total_work = total_work - ?1,
-             total_paid = total_paid - ?2,
-             balance = ?3,
-             updated_at = datetime('now'),
-             sync_status = 'pending'
-         WHERE id = ?4",
-        params![amount, paid_amount, new_balance, mazdoor_id],
-    ).map_err(|e| e.to_string())?;
-
-    tx.execute("DELETE FROM mazdoori_entries WHERE id = ?1", params![entry_id]).map_err(|e| e.to_string())?;
+    let (worker_id, name, detail, amount, paid, notes): (String,String,String,f64,f64,Option<String>) = tx.query_row("SELECT mazdoor_id,mazdoor_name,work_detail,amount,paid_amount,notes FROM mazdoori_entries WHERE id=?1", params![entry_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?))).map_err(|e| e.to_string())?;
+    let reference = format!("Void:{}", entry_id);
+    let voided: i64 = tx.query_row("SELECT COUNT(*) FROM mazdoori_entries WHERE notes=?1", params![reference], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if voided>0 || notes.as_ref().is_some_and(|n| n.starts_with("Void:") || n.starts_with("Auto-posted")) { return Err("Invoice-linked or already voided entries cannot be voided".into()); }
+    tx.execute("UPDATE mazdoors SET total_work=total_work-?1,total_paid=total_paid-?2,balance=balance-?1+?2,updated_at=datetime('now'),sync_status='pending' WHERE id=?3", params![amount,paid,worker_id]).map_err(|e| e.to_string())?;
+    let balance: f64 = tx.query_row("SELECT balance FROM mazdoors WHERE id=?1", params![worker_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    tx.execute("INSERT INTO mazdoori_entries(id,mazdoor_id,mazdoor_name,work_date,work_detail,amount,paid_amount,balance,notes) VALUES(?1,?2,?3,date('now','localtime'),?4,?5,?6,?7,?8)", params![Uuid::new_v4().to_string(),worker_id,name,format!("Voided: {}",detail),-amount,-paid,balance,reference]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(true)
 }
 
 #[tauri::command]
-pub fn pay_mazdoor(payment: PayMazdoorDto, state: State<DbState>) -> Result<bool, String> {
+pub fn pay_mazdoor(mut payment: PayMazdoorDto, state: State<DbState>) -> Result<bool, String> {
     if payment.amount <= 0.0 {
         return Err("Payout amount must be greater than zero".to_string());
     }
@@ -1133,7 +1172,7 @@ pub fn pay_mazdoor(payment: PayMazdoorDto, state: State<DbState>) -> Result<bool
     let note_text = payment.notes.unwrap_or_else(|| "Payout to worker".to_string());
     tx.execute(
         "INSERT INTO mazdoori_entries (id, mazdoor_id, mazdoor_name, work_date, work_detail, amount, paid_amount, balance, notes, sync_status)
-         VALUES (?1, ?2, ?3, date('now'), 'Payment Received / Payout', 0.0, ?4, ?5, ?6, 'pending')",
+         VALUES (?1, ?2, ?3, date('now','localtime'), 'Payment Received / Payout', 0.0, ?4, ?5, ?6, 'pending')",
         params![
             entry_id,
             payment.mazdoor_id,
@@ -1151,11 +1190,11 @@ pub fn pay_mazdoor(payment: PayMazdoorDto, state: State<DbState>) -> Result<bool
 #[tauri::command]
 pub fn get_sales(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SaleRecordDto>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
-    let limit_val = limit.unwrap_or(100);
+    let limit_val = limit.unwrap_or(-1);
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, invoice_number, customer_id, customer_name, customer_mobile, subtotal, discount, total_mazdoori, total, paid_amount, remaining_credit, payment_method, notes, created_at, sync_status
+            "SELECT id, invoice_number, customer_id, customer_name, customer_mobile, subtotal, discount, total_mazdoori, total, paid_amount, remaining_credit, payment_method, notes, created_at, sync_status, cancelled_at, cancel_reason
              FROM sales
              ORDER BY created_at DESC
              LIMIT ?1"
@@ -1164,6 +1203,7 @@ pub fn get_sales(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SaleRe
 
     let rows = stmt.query_map(params![limit_val], |row| {
         Ok(SaleRecordDto {
+            items: Vec::new(),
             id: row.get(0)?,
             invoice_number: row.get(1)?,
             customer_id: row.get(2)?,
@@ -1179,12 +1219,22 @@ pub fn get_sales(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SaleRe
             notes: row.get(12)?,
             created_at: row.get(13)?,
             sync_status: row.get(14)?,
+            cancelled_at: row.get(15)?,
+            cancel_reason: row.get(16)?,
         })
     }).map_err(|e| e.to_string())?;
 
     let mut sales = Vec::new();
     for r in rows {
         sales.push(r.map_err(|e| e.to_string())?);
+    }
+    for sale in &mut sales {
+        let mut stmt = conn.prepare("SELECT id,item_id,item_name,quantity,rate,mazdoori,amount FROM sale_items WHERE sale_id=?1 ORDER BY rowid").map_err(|e| e.to_string())?;
+        sale.items = stmt.query_map(params![sale.id], |r| Ok(SaleItemDto { id: Some(r.get(0)?), item_id: r.get(1)?, item_name: r.get(2)?, quantity: r.get(3)?, rate: r.get(4)?, mazdoori: r.get(5)?, amount: r.get(6)?, mazdoori_tasks: Vec::new() })).map_err(|e| e.to_string())?.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
+        for item in &mut sale.items {
+            let mut tasks = conn.prepare("SELECT id,title,amount,worker_name FROM sale_item_mazdoori_tasks WHERE sale_item_id=?1 ORDER BY rowid").map_err(|e| e.to_string())?;
+            item.mazdoori_tasks = tasks.query_map(params![item.id], |r| Ok(ItemMazdooriTaskDto { id: Some(r.get(0)?), title: r.get(1)?, amount: r.get(2)?, worker_name: r.get(3)? })).map_err(|e| e.to_string())?.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
+        }
     }
     Ok(sales)
 }
@@ -1235,6 +1285,7 @@ pub fn update_business_settings(
     settings: BusinessSettingsDto,
     state: State<DbState>,
 ) -> Result<BusinessSettingsDto, String> {
+    if settings.business_name.trim().is_empty() || settings.invoice_prefix.trim().is_empty() || settings.next_invoice_number < 1 || !["A4", "80mm", "58mm"].contains(&settings.receipt_paper_size.as_str()) { return Err("Invalid invoice settings".into()); }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
     conn.execute(
@@ -1275,3 +1326,133 @@ pub fn update_business_settings(
 }
 
 
+
+// Cancel keeps the invoice for history and posts reversals: the customer's
+// purchase, at-sale payment (refunded) and credit come off, and labour
+// auto-posted to workers is voided.
+#[tauri::command]
+pub fn cancel_sale(sale_id: String, reason: Option<String>, state: State<DbState>) -> Result<bool, String> {
+    let reason = reason.map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let (invoice_number, customer_id, total, paid, credit, cancelled_at): (String, Option<String>, f64, f64, f64, Option<String>) = tx.query_row(
+        "SELECT invoice_number, customer_id, total, paid_amount, remaining_credit, cancelled_at FROM sales WHERE id = ?1",
+        params![sale_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+    ).optional().map_err(|e| e.to_string())?.ok_or("Invoice not found")?;
+    if cancelled_at.is_some() { return Err("Invoice is already cancelled".into()); }
+
+    tx.execute(
+        "UPDATE sales
+         SET cancelled_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+             cancel_reason = ?1,
+             updated_at = datetime('now'),
+             sync_status = 'pending'
+         WHERE id = ?2",
+        params![reason, sale_id],
+    ).map_err(|e| e.to_string())?;
+
+    // Mirror of the invoice's ledger row: the bill comes off, the amount paid at sale is refunded
+    if let Some(cust_id) = customer_id.filter(|id| !id.is_empty()) {
+        tx.execute(
+            "UPDATE customers
+             SET total_purchase = ROUND(total_purchase - ?1, 2),
+                 total_paid = ROUND(total_paid - ?2, 2),
+                 balance = ROUND(balance - ?3, 2),
+                 updated_at = datetime('now'),
+                 sync_status = 'pending'
+             WHERE id = ?4",
+            params![total, paid, credit, cust_id],
+        ).map_err(|e| e.to_string())?;
+        let balance: f64 = tx.query_row("SELECT balance FROM customers WHERE id = ?1", params![cust_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+        let description = match &reason {
+            Some(r) => format!("Invoice #{} cancelled - {}", invoice_number, r),
+            None => format!("Invoice #{} cancelled", invoice_number),
+        };
+        tx.execute(
+            "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
+             VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
+            params![Uuid::new_v4().to_string(), cust_id, description, paid, total, balance, sale_id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    let mut entries: Vec<(String, String, String, String, f64)> = Vec::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, mazdoor_id, mazdoor_name, work_detail, amount FROM mazdoori_entries WHERE notes = ?1 OR notes = ?2 ORDER BY rowid").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(
+            params![format!("Auto-posted from sale {}", sale_id), format!("Auto-posted from sale {}", invoice_number)],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        ).map_err(|e| e.to_string())?;
+        for row in rows { entries.push(row.map_err(|e| e.to_string())?); }
+    }
+    for (entry_id, worker_id, worker_name, detail, amount) in entries {
+        let reference = format!("Void:{}", entry_id);
+        let voided: i64 = tx.query_row("SELECT COUNT(*) FROM mazdoori_entries WHERE notes = ?1", params![reference], |r| r.get(0)).map_err(|e| e.to_string())?;
+        if voided > 0 { continue; }
+        tx.execute(
+            "UPDATE mazdoors SET total_work = ROUND(total_work - ?1, 2), balance = ROUND(balance - ?1, 2), updated_at = datetime('now'), sync_status = 'pending' WHERE id = ?2",
+            params![amount, worker_id],
+        ).map_err(|e| e.to_string())?;
+        let balance: f64 = tx.query_row("SELECT balance FROM mazdoors WHERE id = ?1", params![worker_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO mazdoori_entries (id, mazdoor_id, mazdoor_name, work_date, work_detail, amount, paid_amount, balance, notes, sync_status)
+             VALUES (?1, ?2, ?3, date('now','localtime'), ?4, ?5, 0.0, ?6, ?7, 'pending')",
+            params![Uuid::new_v4().to_string(), worker_id, worker_name, format!("Voided: {} (invoice cancelled)", detail), -amount, balance, reference],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn get_expenses(state: State<DbState>) -> Result<Vec<ExpenseDto>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, expense_date, category, description, amount, payment_method, created_at, sync_status
+         FROM expenses
+         ORDER BY expense_date DESC, created_at DESC"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| Ok(ExpenseDto {
+        id: r.get(0)?,
+        expense_date: r.get(1)?,
+        category: r.get(2)?,
+        description: r.get(3)?,
+        amount: r.get(4)?,
+        payment_method: r.get(5)?,
+        created_at: r.get(6)?,
+        sync_status: r.get(7)?,
+    })).map_err(|e| e.to_string())?;
+    let mut expenses = Vec::new();
+    for row in rows { expenses.push(row.map_err(|e| e.to_string())?); }
+    Ok(expenses)
+}
+
+#[tauri::command]
+pub fn create_expense(mut expense: ExpenseDto, state: State<DbState>) -> Result<ExpenseDto, String> {
+    expense.amount = (expense.amount * 100.0).round() / 100.0;
+    expense.category = expense.category.trim().to_string();
+    expense.description = expense.description.map(|d| d.trim().to_string()).filter(|d| !d.is_empty());
+    let valid_date = expense.expense_date.len() == 10 && expense.expense_date.bytes().enumerate().all(|(i, b)| if i == 4 || i == 7 { b == b'-' } else { b.is_ascii_digit() });
+    if expense.id.trim().is_empty() || !expense.amount.is_finite() || expense.amount <= 0.0 || expense.category.is_empty() || !valid_date || !["cash", "bank"].contains(&expense.payment_method.as_str()) {
+        return Err("Enter a valid expense date, category, amount and payment method".into());
+    }
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO expenses (id, expense_date, category, description, amount, payment_method, created_at, updated_at, sync_status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), datetime('now'), 'pending')",
+        params![expense.id, expense.expense_date, expense.category, expense.description, expense.amount, expense.payment_method],
+    ).map_err(|e| e.to_string())?;
+    expense.created_at = conn.query_row("SELECT created_at FROM expenses WHERE id = ?1", params![expense.id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    expense.sync_status = "pending".to_string();
+    Ok(expense)
+}
+
+#[tauri::command]
+pub fn delete_expense(expense_id: String, state: State<DbState>) -> Result<bool, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let deleted = conn.execute("DELETE FROM expenses WHERE id = ?1", params![expense_id]).map_err(|e| e.to_string())?;
+    if deleted == 0 { return Err("Expense not found".into()); }
+    Ok(true)
+}

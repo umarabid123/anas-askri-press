@@ -17,6 +17,10 @@ export interface ShopInvoiceData {
   paidAmount: number
   remainingCredit: number
   paymentMethod: string
+  // Set when showing a saved invoice, so it can be cancelled
+  saleId?: string
+  cancelledAt?: string | null
+  cancelReason?: string | null
 }
 
 interface ShopInvoiceTemplateProps {
@@ -75,6 +79,25 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
     const customerPhone = data.customer?.mobile || data.customerPhone || ''
     const customerAddress = data.customer?.address || data.customerAddress || ''
 
+    if (settings && settings.receiptPaperSize !== 'A4') return (
+      <div id={id} ref={ref} className="bg-white p-3 text-black font-sans select-text" style={{ width: settings.receiptPaperSize, fontSize: settings.receiptPaperSize === '58mm' ? 10 : 12 }}>
+        <div className="text-center border-b border-black pb-2"><h1 className="font-bold text-sm">{rawShopName}</h1><p>{address}</p><p>{phone}</p></div>
+        <p className="font-bold mt-2">Invoice {data.invoiceNumber}</p><p>{formattedDate} · {data.paymentMethod.toUpperCase()}</p>
+        {data.cancelledAt && <p className="text-center font-bold border border-black my-1">*** CANCELLED ***</p>}
+        <p>{customerName || 'Cash Customer'} {customerPhone}</p>
+        {customerAddress && <p>{customerAddress}</p>}
+        <div className="border-y border-dashed border-black my-2 py-2">
+          {data.items.map((item, index) => <div key={item.id || index} className="mb-2">
+            <p className="font-semibold break-words">{index + 1}. {item.itemName}</p>
+            <div className="flex justify-between gap-2"><span>{item.quantity} × {item.rate.toLocaleString()} + labour {item.mazdoori.toLocaleString()}</span><b>{item.amount.toLocaleString()}</b></div>
+            {(item.mazdooriTasks || []).map(task => <p key={task.id}>{task.title}{task.workerName ? ' · ' + task.workerName : ''}: {task.amount.toLocaleString()}</p>)}
+          </div>)}
+        </div>
+        {[['Goods', data.subtotal], ['Labour', data.totalMazdoori || 0], ['Discount', data.discount], ['TOTAL', data.total], ['Paid', data.paidAmount], ['Balance', data.remainingCredit]].map(([label, amount]) => <div key={label} className="flex justify-between gap-2"><span>{label}</span><b>{Number(amount).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</b></div>)}
+        <p className="text-center mt-3 border-t border-black pt-2">{footerText}</p>
+      </div>
+    )
+
     return (
       <div
         id={id}
@@ -82,6 +105,15 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
         className="w-[950px] min-h-[620px] bg-white text-slate-900 relative p-8 font-sans overflow-hidden select-none border border-slate-300 shadow-sm print:shadow-none print:border-none print:w-full print:p-4"
         style={{ boxSizing: 'border-box' }}
       >
+        {/* Cancelled stamp, so a shared or printed copy cannot pass as valid */}
+        {data.cancelledAt && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+            <div className="border-[6px] border-red-600/80 text-red-600/80 font-black text-7xl tracking-widest px-10 py-3 rounded-xl -rotate-12">
+              CANCELLED
+            </div>
+          </div>
+        )}
+
         {/* Top-Left Corner Geometric Banner */}
         <div className="absolute top-0 left-0 w-44 h-14 pointer-events-none overflow-hidden">
           <svg viewBox="0 0 180 60" className="w-full h-full">

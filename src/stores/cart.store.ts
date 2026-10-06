@@ -37,10 +37,7 @@ interface CartState {
 }
 
 const createInitialItems = (): SaleItem[] => [
-  { id: crypto.randomUUID(), itemName: 'Chadar 8x4', quantity: 2, rate: 3200, mazdoori: 0, mazdooriTasks: [], amount: 6400 },
-  { id: crypto.randomUUID(), itemName: 'Dabi 10 ft', quantity: 5, rate: 450, mazdoori: 0, mazdooriTasks: [], amount: 2250 },
-  { id: crypto.randomUUID(), itemName: 'Chogat', quantity: 3, rate: 600, mazdoori: 0, mazdooriTasks: [], amount: 1800 },
-  { id: crypto.randomUUID(), itemName: 'CNC Cutting (Design)', quantity: 1, rate: 1500, mazdoori: 0, mazdooriTasks: [], amount: 1500 },
+  { id: crypto.randomUUID(), itemName: '', quantity: 1, rate: 0, mazdoori: 0, mazdooriTasks: [], amount: 0 },
 ]
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -94,7 +91,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           id: crypto.randomUUID(),
           title: task.title || '',
           amount: Math.max(0, Number(task.amount) || 0),
-          mazdoorName: task.mazdoorName || '',
+          workerName: task.workerName || task.mazdoorName || '',
         }
         const tasks = [...(item.mazdooriTasks || []), newTask]
         const mazdoori = tasks.reduce((sum, t) => sum + (Number(t.amount) || 0), 0)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Eye,
   HardHat,
@@ -8,22 +8,34 @@ import {
   Users,
   Wallet,
 } from 'lucide-react'
+import { flushSync } from 'react-dom'
 import { Button } from '@/components/ui/Button'
-import { formatPKR, parseDate, formatDate } from '@/utils/financial'
-import { getSales, getCustomers, getMazdoors } from '@/services/sqlite.service'
+import { formatPKR, localDateKey, formatDate } from '@/utils/financial'
+import { getSales, getCustomers, getMazdoors, getPayments, type Receipt } from '@/services/sqlite.service'
 import { BillPreviewModal } from '@/features/billing/components/BillPreviewModal'
 import type { ShopInvoiceData } from '@/features/billing/components/ShopInvoiceTemplate'
 import type { Sale, Customer, Mazdoor } from '@/types'
+
+import { dailyReport, activeSales, activePayments } from '@/utils/reports'
+import { saleToInvoiceData } from '@/features/billing/invoice-data'
+import { printDocument } from '@/utils/printing'
 
 export function ReportsPage() {
   const [activeTab, setActiveTab] = useState<'sales' | 'customer' | 'mazdoori' | 'daily'>('sales')
   const [sales, setSales] = useState<Sale[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [payments, setPayments] = useState<Receipt[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
+  const [page, setPage] = useState(1)
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [workers, setWorkers] = useState<Mazdoor[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [reloadKey, setReloadKey] = useState(0)
 
   // Filter states
-  const [datePreset, setDatePreset] = useState<'all' | 'today' | 'week' | 'month'>('all')
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | 'week' | 'month' | 'custom'>('all')
   const [searchTerm, setSearchTerm] = useState('')
 
   // View details modal
@@ -33,86 +45,46 @@ export function ReportsPage() {
     async function loadData() {
       setIsLoading(true)
       try {
-        const [salesData, customersData, workersData] = await Promise.all([
-          getSales(500),
+        const [salesData, customersData, workersData, paymentsData] = await Promise.all([
+          getSales(),
           getCustomers(),
           getMazdoors(),
+          getPayments(),
         ])
+        setPayments(paymentsData)
         setSales(salesData)
         setCustomers(customersData)
         setWorkers(workersData)
       } catch (err) {
-        console.error('Failed to load reports data:', err)
+        setError(err instanceof Error ? err.message : String(err))
       } finally {
         setIsLoading(false)
       }
     }
     loadData()
-  }, [])
+  }, [reloadKey])
 
-  // Filter sales by date preset
-  const filteredSales = useMemo(() => {
-    const now = new Date()
-    return sales.filter((sale) => {
-      if (datePreset === 'all') return true
-      const saleDate = parseDate(sale.createdAt)
-
-      if (datePreset === 'today') {
-        return saleDate.toDateString() === now.toDateString()
-      }
-      if (datePreset === 'week') {
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-        return saleDate >= weekAgo
-      }
-      if (datePreset === 'month') {
-        return (
-          saleDate.getMonth() === now.getMonth() &&
-          saleDate.getFullYear() === now.getFullYear()
-        )
-      }
-      return true
-    })
-  }, [sales, datePreset])
-
-  // Summary Metrics
-  const totalRevenue = filteredSales.reduce((acc, s) => acc + (s.total || 0), 0)
-  const totalReceived = filteredSales.reduce((acc, s) => acc + (s.paidAmount || 0), 0)
-  const totalCustomerReceivables = customers.reduce((acc, c) => acc + (c.balance || 0), 0)
-  const totalMazdooriLiability = workers.reduce((acc, w) => acc + (w.balance || 0), 0)
-
-  // Aggregated Daily Report
-  const dailyReportData = useMemo(() => {
-    const map = new Map<string, { date: string; bills: number; total: number; received: number; credit: number }>()
-
-    for (const sale of filteredSales) {
-      const dateKey = sale.createdAt ? parseDate(sale.createdAt).toISOString().slice(0, 10) : 'Unknown'
-      const existing = map.get(dateKey) || { date: dateKey, bills: 0, total: 0, received: 0, credit: 0 }
-      existing.bills += 1
-      existing.total += sale.total
-      existing.received += sale.paidAmount
-      existing.credit += sale.remainingCredit
-      map.set(dateKey, existing)
-    }
-
-    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date))
-  }, [filteredSales])
+  const inRange = (value: string) => {
+    const key = localDateKey(value), today = localDateKey()
+    if (datePreset === 'today') return key === today
+    if (datePreset === 'week') { const start = new Date(); start.setDate(start.getDate() - 6); return key >= localDateKey(start) && key <= today }
+    if (datePreset === 'month') return key.slice(0, 7) === today.slice(0, 7)
+    if (datePreset === 'custom') return (!fromDate || key >= fromDate) && (!toDate || key <= toDate)
+    return true
+  }
+  const filteredSales = sales.filter(sale => inRange(sale.createdAt))
+  // Cancelled invoices stay listed but count towards no totals; their at-sale payments were refunded
+  const filteredPayments = activePayments(payments, sales).filter(payment => inRange(payment.paymentDate))
+  const countedSales = activeSales(filteredSales)
+  const totalRevenue = countedSales.reduce((sum, sale) => sum + sale.total, 0)
+  const totalReceived = filteredPayments.reduce((sum, payment) => sum + payment.amount, 0)
+  const totalCustomerReceivables = customers.reduce((sum, customer) => sum + customer.balance, 0)
+  const totalMazdooriLiability = workers.reduce((sum, worker) => sum + worker.balance, 0)
+  const dailyReportData = dailyReport(filteredSales, filteredPayments)
 
   // Handle invoice view details
   const handleViewInvoice = (sale: Sale) => {
-    setSelectedInvoice({
-      invoiceNumber: sale.invoiceNumber,
-      date: sale.createdAt,
-      customerName: sale.customerName || '',
-      customerPhone: sale.customerMobile || '',
-      items: sale.items || [],
-      subtotal: sale.subtotal || sale.total,
-      totalMazdoori: sale.totalMazdoori || 0,
-      discount: sale.discount || 0,
-      total: sale.total,
-      paidAmount: sale.paidAmount,
-      remainingCredit: sale.remainingCredit,
-      paymentMethod: sale.paymentMethod,
-    })
+    setSelectedInvoice(saleToInvoiceData(sale, customers.find(c => c.id === sale.customerId)))
   }
 
   // Filtered rows for active tab
@@ -136,8 +108,14 @@ export function ReportsPage() {
 
   const displayedDaily = dailyReportData.filter((d) => d.date.includes(searchTerm))
 
+  const rowCount = activeTab === 'sales' ? displayedSales.length : activeTab === 'customer' ? displayedCustomers.length : activeTab === 'mazdoori' ? displayedWorkers.length : displayedDaily.length
+  const maxPage = Math.max(1, Math.ceil(rowCount / 50))
+  const currentPage = Math.min(page, maxPage)
+  const paged = <T,>(rows: T[]) => printing ? rows : rows.slice((currentPage - 1) * 50, currentPage * 50)
   return (
-    <div className="space-y-4">
+    <div id="financial-report-print" className="space-y-4">
+      {error && <div role="alert" className="p-3 bg-red-50 text-red-700">{error}</div>}
+      <div className="flex gap-3 print:hidden"><label>From <input aria-label="Report start date" type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setDatePreset('custom'); setPage(1) }} /></label><label>To <input aria-label="Report end date" type="date" min={fromDate} value={toDate} onChange={e => { setToDate(e.target.value); setDatePreset('custom'); setPage(1) }} /></label></div>
       {/* Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -186,7 +164,7 @@ export function ReportsPage() {
 
           {/* Print / Export Report */}
           <Button
-            onClick={() => window.print()}
+            onClick={() => { flushSync(() => setPrinting(true)); window.addEventListener('afterprint', () => setPrinting(false), { once: true }); printDocument('financial-report-print') }}
             variant="outline"
             className="flex items-center gap-1.5"
           >
@@ -207,7 +185,7 @@ export function ReportsPage() {
             </div>
           </div>
           <p className="text-xl font-black text-slate-900">{formatPKR(totalRevenue)}</p>
-          <p className="text-[11px] text-slate-500 mt-1">{filteredSales.length} Total Invoices</p>
+          <p className="text-[11px] text-slate-500 mt-1">{countedSales.length} Total Invoices</p>
         </div>
 
         {/* Card 2: Received Cash/Bank */}
@@ -291,7 +269,7 @@ export function ReportsPage() {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
               placeholder="Search active report..."
               className="w-full h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
@@ -317,7 +295,7 @@ export function ReportsPage() {
                     <th className="py-2.5 px-4 text-right">Total Amount</th>
                     <th className="py-2.5 px-4 text-right">Paid</th>
                     <th className="py-2.5 px-4 text-right">Balance</th>
-                    <th className="py-2.5 px-4 text-center w-20">View</th>
+                    <th className="py-2.5 px-4 text-center w-20 print:hidden">View</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -328,10 +306,13 @@ export function ReportsPage() {
                       </td>
                     </tr>
                   ) : (
-                    displayedSales.map((sale, i) => (
-                      <tr key={sale.id || i} className="hover:bg-slate-50/50">
+                    paged(displayedSales).map((sale, i) => (
+                      <tr key={sale.id || i} className={`hover:bg-slate-50/50 ${sale.cancelledAt ? 'opacity-60' : ''}`}>
                         <td className="py-2.5 px-3 text-center text-xs text-slate-500">{i + 1}</td>
-                        <td className="py-2.5 px-4 font-bold text-slate-900 text-xs">{sale.invoiceNumber}</td>
+                        <td className="py-2.5 px-4 font-bold text-slate-900 text-xs">
+                          {sale.invoiceNumber}
+                          {sale.cancelledAt && <span className="ml-1.5 text-[10px] font-bold uppercase text-red-600 bg-red-50 border border-red-200 rounded px-1.5">Cancelled</span>}
+                        </td>
                         <td className="py-2.5 px-4 text-xs text-slate-600 whitespace-nowrap">
                           {sale.createdAt ? formatDate(sale.createdAt) : '-'}
                         </td>
@@ -354,7 +335,7 @@ export function ReportsPage() {
                         >
                           {formatPKR(sale.remainingCredit)}
                         </td>
-                        <td className="py-2.5 px-4 text-center">
+                        <td className="py-2.5 px-4 text-center print:hidden">
                           <button
                             type="button"
                             onClick={() => handleViewInvoice(sale)}
@@ -384,7 +365,7 @@ export function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayedCustomers.map((cust, i) => (
+                  {paged(displayedCustomers).map((cust, i) => (
                     <tr key={cust.id} className="hover:bg-slate-50/50">
                       <td className="py-2.5 px-3 text-center text-xs text-slate-500">{i + 1}</td>
                       <td className="py-2.5 px-4 font-bold text-slate-900 text-xs">{cust.name}</td>
@@ -421,7 +402,7 @@ export function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayedWorkers.map((w, i) => (
+                  {paged(displayedWorkers).map((w, i) => (
                     <tr key={w.id} className="hover:bg-slate-50/50">
                       <td className="py-2.5 px-3 text-center text-xs text-slate-500">{i + 1}</td>
                       <td className="py-2.5 px-4 font-bold text-slate-900 text-xs">{w.name}</td>
@@ -458,7 +439,7 @@ export function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {displayedDaily.map((d, i) => (
+                  {paged(displayedDaily).map((d, i) => (
                     <tr key={d.date} className="hover:bg-slate-50/50">
                       <td className="py-2.5 px-3 text-center text-xs text-slate-500">{i + 1}</td>
                       <td className="py-2.5 px-4 font-bold text-slate-900 text-xs">{d.date}</td>
@@ -481,12 +462,14 @@ export function ReportsPage() {
         </div>
       </div>
 
+      <div className="flex justify-between items-center print:hidden"><span>{rowCount} records · Page {currentPage} of {maxPage}</span><div className="flex gap-2"><Button variant="outline" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</Button><Button variant="outline" disabled={currentPage >= maxPage} onClick={() => setPage(currentPage + 1)}>Next</Button></div></div>
       {/* Bill Preview Modal for Viewing Invoice Details */}
       <BillPreviewModal
         isOpen={!!selectedInvoice}
         data={selectedInvoice}
         onClose={() => setSelectedInvoice(null)}
         onNewBill={() => setSelectedInvoice(null)}
+        onCancelled={() => setReloadKey(k => k + 1)}
       />
     </div>
   )

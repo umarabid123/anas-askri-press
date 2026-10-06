@@ -4,6 +4,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  LayoutDashboard,
+  Receipt,
   Settings,
   Smile,
   Users,
@@ -20,9 +22,11 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { name: 'Dashboard', to: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { name: 'New Bill', to: ROUTES.NEW_BILL, icon: FileText },
   { name: 'Customers', to: ROUTES.CUSTOMERS, icon: Users },
   { name: 'Mazdoori', to: ROUTES.MAZDOORI, icon: UserCheck },
+  { name: 'Expenses', to: ROUTES.EXPENSES, icon: Receipt },
   { name: 'Reports', to: ROUTES.REPORTS, icon: BarChart2 },
   { name: 'Settings', to: ROUTES.SETTINGS, icon: Settings },
 ]
@@ -63,7 +67,7 @@ export function Sidebar() {
               <NavLink
                 key={item.to}
                 to={item.to}
-                end={item.to === ROUTES.NEW_BILL}
+                end={item.to === ROUTES.DASHBOARD}
                 title={sidebarCollapsed ? item.name : undefined}
                 className={({ isActive }) =>
                   cn(

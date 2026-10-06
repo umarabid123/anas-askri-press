@@ -204,10 +204,10 @@
 -   [x] Credit/balance
 -   [x] Notes
 -   [x] Footer
--   [x] Print command via Tauri native printing
--   [x] Printer selection
--   [x] Test print
--   [x] Print failure handling
+-   [x] Browser/Tauri WebView print command
+-   [ ] Native printer selection
+-   [ ] Test physical printer output
+-   [x] Print failure message
 
 ------------------------------------------------------------------------
 
@@ -217,11 +217,11 @@
 
 -   [x] Render invoice template to PNG using canvas/webview screenshot (html-to-image)
 -   [x] Save PNG to local filesystem via Tauri dialog
--   [x] Share PNG via native OS share sheet
--   [x] Open WhatsApp deeplink with customer phone pre-filled
+-   [ ] Native OS share sheet
+-   [x] Open WhatsApp link with customer phone/text pre-filled
 -   [x] Handle missing customer phone gracefully
 -   [x] Handle sharing failure gracefully
--   [x] Show PNG preview before sharing
+-   [x] Show invoice preview before PNG export
 
 ------------------------------------------------------------------------
 
@@ -278,32 +278,32 @@ Operators can also add entries manually in the Mazdoori screen.**
 
 ## Phase 13 --- Backup & Restore
 
--   [ ] Backup database
--   [ ] Choose backup location
--   [ ] Validate backup
--   [ ] Restore database
--   [ ] Validate restore file
--   [ ] Confirmation before restore
--   [ ] Automatic backup option
--   [ ] Backup error handling
+-   [x] Backup database
+-   [x] Choose backup location
+-   [x] Validate backup
+-   [x] Restore database
+-   [x] Validate restore file
+-   [x] Confirmation before restore
+-   [x] Automatic backup option
+-   [x] Backup error handling
 
 ------------------------------------------------------------------------
 
 ## Phase 14 --- Quality
 
--   [ ] Add unit tests for financial calculations
--   [ ] Add tests for invoice calculations
--   [ ] Test customer ledger
--   [ ] Test mazdoori balance
--   [ ] Test database transactions
--   [ ] Test backup/restore
--   [ ] Test printing
+-   [x] Add unit tests for financial calculations
+-   [x] Add tests for invoice calculations
+-   [x] Test customer ledger
+-   [x] Test mazdoori balance
+-   [x] Test database transactions
+-   [x] Test backup/restore
+-   [ ] Test physical printer output
 -   [ ] Test empty states
 -   [ ] Test loading states
 -   [ ] Test error states
 -   [ ] Test keyboard navigation
--   [ ] Test large tables
--   [ ] Test offline behavior
+-   [x] Test large tables
+-   [x] Test offline behavior
 
 ------------------------------------------------------------------------
 

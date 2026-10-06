@@ -5,6 +5,7 @@ export type EntitySyncState = SyncStatus
 export type SyncOperation = 'INSERT' | 'UPDATE' | 'DELETE'
 
 export type SyncEntityType =
+  | 'customers' | 'items' | 'mazdoors' | 'sales' | 'sale_items' | 'sale_item_mazdoori_tasks' | 'payments' | 'mazdoori_entries'
   | 'business_settings'
   | 'customer'
   | 'item'

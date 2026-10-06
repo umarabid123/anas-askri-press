@@ -3,10 +3,13 @@ import { Outlet } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { GlobalModalContainer } from '@/components/common/GlobalModalContainer'
 import { RouteLoading } from '@/components/common/RouteLoading'
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 
 export function PageLayout() {
+  useGlobalShortcuts()
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#EEF4F8]">
       <Header />

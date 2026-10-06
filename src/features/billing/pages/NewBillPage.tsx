@@ -1,3 +1,5 @@
+import { getBusinessSettings } from '@/services/sqlite.service'
+import { printDocument } from '@/utils/printing'
 import { useState, useRef, useEffect } from 'react'
 import {
   ChevronDown,
@@ -19,6 +21,7 @@ import { Button } from '@/components/ui/Button'
 import { useCartStore } from '@/stores/cart.store'
 import { useCustomers } from '@/hooks/useCustomers'
 import { createSale } from '@/services/sqlite.service'
+import { prepareBill } from '@/utils/billing'
 import { formatPKR } from '@/utils/financial'
 import { cn } from '@/utils/cn'
 import { AddCustomerModal } from '@/features/customers/components/AddCustomerModal'
@@ -128,7 +131,7 @@ export function NewBillPage() {
     addItemMazdooriTask(activeItem.id, {
       title: newMazdooriTitle.trim(),
       amount: parsedAmount,
-      mazdoorName: newMazdooriWorker.trim() || undefined,
+      workerName: newMazdooriWorker.trim() || undefined,
     })
 
     setNewMazdooriTitle('')
@@ -141,32 +144,17 @@ export function NewBillPage() {
     setErrorMessage(null)
     setSuccessMessage(null)
 
-    // Validate at least 1 non-empty item
-    const validItems = items.filter((it) => it.itemName.trim().length > 0)
-    if (validItems.length === 0) {
-      setErrorMessage('Please add at least one item description before saving the bill.')
-      return null
-    }
-
-    if (total <= 0) {
-      setErrorMessage('Total bill amount must be greater than zero.')
-      return null
-    }
-
+    if (isSaving) return null
     setIsSaving(true)
     try {
+      const bill = prepareBill(items, discount, paidAmount)
+      const validItems = bill.items
       const invoiceNumber = await createSale({
+        ...bill,
         customerId: customer?.id || null,
         customerName: customer?.name || null,
         customerMobile: customer?.mobile || null,
-        items: validItems,
-        subtotal: goodsSubtotal,
-        discount: discount,
-        totalMazdoori: totalMazdoori,
-        total: total,
-        paidAmount: paidAmount,
-        remainingCredit: credit,
-        paymentMethod: paymentMethod,
+        paymentMethod,
         notes: notes.trim() || undefined,
       })
 
@@ -178,21 +166,22 @@ export function NewBillPage() {
         customerPhone: customer?.mobile || '',
         customerAddress: customer?.address || '',
         items: validItems,
-        subtotal: goodsSubtotal,
-        totalMazdoori: totalMazdoori,
-        discount: discount,
-        total: total,
-        paidAmount: paidAmount,
-        remainingCredit: credit,
+        subtotal: bill.subtotal,
+        totalMazdoori: bill.totalMazdoori,
+        discount: bill.discount,
+        total: bill.total,
+        paidAmount: bill.paidAmount,
+        remainingCredit: bill.remainingCredit,
         paymentMethod: paymentMethod,
       }
 
       setPreviewInvoiceData(invoiceData)
       setIsPreviewOpen(true)
+      resetCart()
       setSuccessMessage(`Invoice #${invoiceNumber} saved successfully!`)
 
       if (andThen === 'print') {
-        setTimeout(() => window.print(), 300)
+        setTimeout(() => { getBusinessSettings().then(settings => printDocument('shop-invoice-canvas', settings.receiptPaperSize)).catch(err => setErrorMessage(String(err))) }, 300)
       }
 
       return invoiceNumber
@@ -204,6 +193,37 @@ export function NewBillPage() {
       setIsSaving(false)
     }
   }
+
+  // Keyboard flow: Enter moves to the next cell, the last cell of the last row adds a new line
+  const pendingFocusRow = useRef<number | null>(null)
+  const focusCell = (row: number, col: number) => {
+    const input = document.querySelector<HTMLInputElement>(`[data-bill-cell="${row}-${col}"]`)
+    input?.focus(); input?.select()
+  }
+  const handleCellKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    if (col < 3) focusCell(row, col + 1)
+    else if (row < items.length - 1) focusCell(row + 1, 0)
+    else { pendingFocusRow.current = row + 1; addItem() }
+  }
+  useEffect(() => {
+    if (pendingFocusRow.current === null) return
+    focusCell(pendingFocusRow.current, 0)
+    pendingFocusRow.current = null
+  }, [items.length])
+
+  // Ctrl+S saves the bill (ignored while a popup is open)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault()
+        if (!isPreviewOpen && !activeMazdooriItemId && !isAddCustomerOpen) void handleSaveBill()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
 
   const handleStartNewBill = () => {
     resetCart()
@@ -365,6 +385,8 @@ export function NewBillPage() {
                         <input
                           type="text"
                           value={item.itemName}
+                          data-bill-cell={`${index}-0`}
+                          onKeyDown={(e) => handleCellKeyDown(e, index, 0)}
                           onChange={(e) => updateItem(item.id, { itemName: e.target.value })}
                           placeholder="e.g. Chadar 8x4 / Laser Cut Grill"
                           className="w-full h-8 px-3 text-sm text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -377,6 +399,8 @@ export function NewBillPage() {
                           type="number"
                           min="1"
                           value={item.quantity}
+                          data-bill-cell={`${index}-1`}
+                          onKeyDown={(e) => handleCellKeyDown(e, index, 1)}
                           onChange={(e) =>
                             updateItem(item.id, { quantity: Math.max(1, Number(e.target.value) || 1) })
                           }
@@ -391,6 +415,8 @@ export function NewBillPage() {
                           min="0"
                           value={item.rate || ''}
                           placeholder="0"
+                          data-bill-cell={`${index}-2`}
+                          onKeyDown={(e) => handleCellKeyDown(e, index, 2)}
                           onChange={(e) =>
                             updateItem(item.id, { rate: Math.max(0, Number(e.target.value) || 0) })
                           }
@@ -406,6 +432,8 @@ export function NewBillPage() {
                             min="0"
                             value={item.mazdoori || ''}
                             placeholder="0"
+                            data-bill-cell={`${index}-3`}
+                            onKeyDown={(e) => handleCellKeyDown(e, index, 3)}
                             onChange={(e) => {
                               const val = Math.max(0, Number(e.target.value) || 0)
                               updateItem(item.id, { mazdoori: val })
@@ -471,6 +499,9 @@ export function NewBillPage() {
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>Add Another Item</span>
           </button>
+          <p className="text-[11px] text-slate-400 text-center">
+            Shortcuts: <b>Enter</b> next field / new line · <b>Ctrl+S</b> save bill · <b>F2</b> new bill
+          </p>
         </div>
 
         {/* Notes (Optional) */}

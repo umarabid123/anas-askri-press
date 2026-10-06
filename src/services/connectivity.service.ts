@@ -8,15 +8,15 @@ class ConnectivityService {
   private listeners: Set<ConnectivityCallback> = new Set()
   private checkInterval: ReturnType<typeof setInterval> | null = null
 
-  constructor() {
-    this.initListeners()
-  }
+  public start() { if (!this.checkInterval) this.initListeners() }
 
+  private onlineHandler = () => this.handleNetworkChange(true)
+  private offlineHandler = () => this.handleNetworkChange(false)
   private initListeners() {
     if (typeof window === 'undefined') return
 
-    window.addEventListener('online', () => this.handleNetworkChange(true))
-    window.addEventListener('offline', () => this.handleNetworkChange(false))
+    window.addEventListener('online', this.onlineHandler)
+    window.addEventListener('offline', this.offlineHandler)
 
     // Periodic heartbeat check (every 30s)
     this.checkInterval = setInterval(() => {
@@ -68,6 +68,8 @@ class ConnectivityService {
   }
 
   public cleanup() {
+    window.removeEventListener('online', this.onlineHandler)
+    window.removeEventListener('offline', this.offlineHandler)
     if (this.checkInterval) {
       clearInterval(this.checkInterval)
       this.checkInterval = null

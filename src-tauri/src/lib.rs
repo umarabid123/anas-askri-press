@@ -8,6 +8,8 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -45,8 +47,18 @@ pub fn run() {
             delete_mazdoori_entry,
             pay_mazdoor,
             get_sales,
+            cancel_sale,
+            get_expenses,
+            create_expense,
+            delete_expense,
             get_business_settings,
             update_business_settings,
+            export_database,
+            restore_database,
+            save_export_file,
+            pick_backup_file,
+            daily_backup,
+            open_whatsapp,
         ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");

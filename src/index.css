@@ -18,6 +18,11 @@
     box-sizing: border-box;
   }
 
+  /* Tailwind v4 resets buttons to the default arrow cursor */
+  button:not(:disabled), [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
   html,
   body {
     height: 100%;
@@ -65,28 +70,14 @@
   }
 }
 
-/* Print optimization */
+/* Print only the selected document; keep its ancestors visible. */
 @media print {
-  body {
-    background-color: #ffffff !important;
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  #root > div:not(.fixed),
-  nav,
-  header,
-  aside,
-  button {
-    display: none !important;
-  }
-
-  #shop-invoice-canvas {
-    border: none !important;
-    box-shadow: none !important;
-    width: 100% !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
+  body { background: white !important; print-color-adjust: exact; }
+  body.printing-document *:not(.active-print-document):not(.active-print-document *):not(:has(.active-print-document)) { display: none !important; }
+  body.printing-document *:has(.active-print-document) { display: block !important; position: static !important; height: auto !important; max-height: none !important; overflow: visible !important; padding: 0 !important; margin: 0 !important; max-width: none !important; width: 100% !important; transform: none !important; background: white !important; box-shadow: none !important; }
+  .active-print-document { position: static !important; width: 100% !important; overflow: visible !important; box-shadow: none !important; }
+  .active-print-document .print\:hidden, .active-print-document button, .active-print-document input { display: none !important; }
+  .active-print-document table { min-width: 0 !important; }
+  .active-print-document tr { break-inside: avoid; }
+  #root { height: auto !important; overflow: visible !important; }
 }
-
