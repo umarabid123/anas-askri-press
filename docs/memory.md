@@ -523,7 +523,10 @@ Backup Database
 Restore Database
 ```
 
-A backup should be validated before restoration.
+A versioned backup must include all linked history: invoice items and labour
+tasks, receipts, customer ledger, worker ledger, and settings. Validate it
+before restoration, create a recovery copy first, and pause cloud upload until
+the operator chooses to resume it.
 
 ------------------------------------------------------------------------
 

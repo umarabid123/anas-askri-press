@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS business_settings (
     logo_path TEXT,
     invoice_prefix TEXT NOT NULL DEFAULT 'ARKI',
     next_invoice_number INTEGER NOT NULL DEFAULT 1001,
-    receipt_paper_size TEXT NOT NULL DEFAULT '80mm',
+    receipt_paper_size TEXT NOT NULL DEFAULT 'A4',
     footer_text TEXT NOT NULL DEFAULT 'Thank you for your business!',
     show_logo INTEGER NOT NULL DEFAULT 1,
     default_printer TEXT,
@@ -187,6 +187,26 @@ CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_created_at ON sync_queue(created_at ASC);
 "#;
 
+// Invoice cancellation (history kept, reversals posted) and shop expenses.
+pub const MIGRATION_03_SQL: &str = r#"
+ALTER TABLE sales ADD COLUMN cancelled_at TEXT;
+ALTER TABLE sales ADD COLUMN cancel_reason TEXT;
+
+CREATE TABLE IF NOT EXISTS expenses (
+    id TEXT PRIMARY KEY,
+    expense_date TEXT NOT NULL,
+    category TEXT NOT NULL,
+    description TEXT,
+    amount REAL NOT NULL,
+    payment_method TEXT NOT NULL DEFAULT 'cash',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    sync_status TEXT NOT NULL DEFAULT 'pending'
+);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date DESC);
+"#;
+
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
     // 1. Ensure migrations table
     conn.execute_batch(
@@ -216,21 +236,33 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         // Ensure default business settings row exists
         tx.execute(
             "INSERT OR IGNORE INTO business_settings (id, business_name, subtitle, invoice_prefix, next_invoice_number)
-             VALUES ('default', 'Arki Press & CNC Shop', 'Chadar • Dabi • Chogat • Laser Cutting • CNC Cutting', 'ARKI', 1001)",
+             VALUES ('default', 'ANAS ARKI PRESS & LASER CUTTING', 'PRECISION | QUALITY | YOUR VISION OUR WORK', 'ARKI', 1001)",
             [],
         )?;
 
-        // Seed default services
-        let services = ["Chadar", "Dabi", "Chogat", "Laser Cutting", "CNC Cutting"];
-        for svc in services {
-            tx.execute(
-                "INSERT OR IGNORE INTO items (id, name, default_rate, is_active) VALUES (?1, ?2, 0.0, 1)",
-                params![format!("item-{}", svc.to_lowercase().replace(' ', "-")), svc],
-            )?;
-        }
+        // Free-form billing needs no seeded catalogue. Legacy items remain for historical references.
 
         tx.commit()?;
         log::info!("Migration 01 applied successfully");
+    }
+
+    // Version 2 is recorded by the sync trigger installer.
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 3",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if count == 0 {
+        log::info!("Running Migration 03: Invoice cancellation and expenses");
+        let tx = conn.transaction()?;
+        tx.execute_batch(MIGRATION_03_SQL)?;
+        tx.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))",
+            params![3, "03_cancellation_and_expenses"],
+        )?;
+        tx.commit()?;
+        log::info!("Migration 03 applied successfully");
     }
 
     Ok(())

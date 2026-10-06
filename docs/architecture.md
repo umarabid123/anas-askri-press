@@ -450,12 +450,17 @@ backupDatabase()
 restoreDatabase()
 ```
 
-Backups should be created safely and restoration should validate the
-database before replacing the active database.
+Backups are versioned `arki-pos` JSON snapshots. They contain settings,
+customers, complete invoice headers/items/labour tasks, receipts, customer
+ledger entries, workers, worker entries and synchronization metadata.
+
+Restore validates the complete snapshot and financial relationships before an
+atomic replacement. The app writes a recovery snapshot first and pauses cloud
+upload until the operator explicitly resumes it.
 
 ------------------------------------------------------------------------
 
-## 16. Future Cloud Sync
+## 16. Optional Cloud Sync
 
 V1 remains local-first.
 
@@ -473,7 +478,13 @@ Sync Queue
 Supabase
 ```
 
-Cloud sync must not be required for normal POS operation.
+Cloud sync must not be required for normal POS operation. Each local write
+queues a complete entity snapshot. Sync uploads the parent records before
+dependent records in one RPC transaction. Failed batches remain retryable;
+newer local writes remain pending even when an earlier batch succeeds.
+
+The cloud RPC only accepts approved authenticated shop users, and prevents
+financial record deletion or conflicting rewrites of historical records.
 
 ------------------------------------------------------------------------
 

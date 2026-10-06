@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useCustomers } from '@/hooks/useCustomers'
 import { useCartStore } from '@/stores/cart.store'
+import { ROUTES } from '@/constants/routes'
 import { formatPKR } from '@/utils/financial'
 import { AddCustomerModal } from '../components/AddCustomerModal'
 import { EditCustomerModal } from '../components/EditCustomerModal'
@@ -56,7 +57,7 @@ export function CustomersPage() {
 
   const handleNewBill = (customer: Customer) => {
     setCustomerInCart(customer)
-    navigate('/')
+    navigate(ROUTES.NEW_BILL)
   }
 
   const handleDeleteConfirm = async () => {
@@ -152,7 +153,7 @@ export function CustomersPage() {
                         <td className="py-3 px-4">
                           <button
                             onClick={() => navigate(`/customers/${customer.id}`)}
-                            className="font-semibold text-slate-900 text-sm hover:text-blue-600 text-left transition-colors"
+                            className="font-semibold text-slate-900 text-sm hover:text-blue-600 text-left transition-colors cursor-pointer"
                           >
                             {customer.name}
                           </button>
@@ -183,7 +184,7 @@ export function CustomersPage() {
                             <button
                               type="button"
                               onClick={() => handleNewBill(customer)}
-                              className="p-1.5 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              className="p-1.5 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                               title="Create New Bill"
                             >
                               <FilePlus className="w-4 h-4 stroke-[2]" />
@@ -191,7 +192,7 @@ export function CustomersPage() {
                             <button
                               type="button"
                               onClick={() => setPaymentCustomer(customer)}
-                              className="p-1.5 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                              className="p-1.5 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                               title="Receive Payment"
                             >
                               <DollarSign className="w-4 h-4 stroke-[2.2]" />
@@ -199,7 +200,7 @@ export function CustomersPage() {
                             <button
                               type="button"
                               onClick={() => navigate(`/customers/${customer.id}`)}
-                              className="p-1.5 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors"
+                              className="p-1.5 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                               title="View Ledger & Statement"
                             >
                               <Eye className="w-4 h-4 stroke-[2]" />
@@ -207,7 +208,7 @@ export function CustomersPage() {
                             <button
                               type="button"
                               onClick={() => setEditingCustomer(customer)}
-                              className="p-1.5 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                              className="p-1.5 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                               title="Edit Customer"
                             >
                               <Pencil className="w-4 h-4 stroke-[2]" />
@@ -218,7 +219,7 @@ export function CustomersPage() {
                                 setDeleteError(null)
                                 setDeletingCustomer(customer)
                               }}
-                              className="p-1.5 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              className="p-1.5 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
                               title="Delete Customer"
                             >
                               <Trash2 className="w-4 h-4 stroke-[2]" />

@@ -48,6 +48,19 @@ export interface Sale {
   remainingCredit: number
   paymentMethod: PaymentMethod
   notes?: string
+  cancelledAt?: string | null
+  cancelReason?: string | null
+  createdAt: string
+  syncStatus: SyncStatus
+}
+
+export interface Expense {
+  id: string
+  expenseDate: string // YYYY-MM-DD
+  category: string
+  description?: string | null
+  amount: number
+  paymentMethod: PaymentMethod
   createdAt: string
   syncStatus: SyncStatus
 }

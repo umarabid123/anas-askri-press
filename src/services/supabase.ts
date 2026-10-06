@@ -15,7 +15,7 @@ export function isSupabaseConfigured(): boolean {
     SUPABASE_URL.trim().length > 0 &&
     typeof SUPABASE_ANON_KEY === 'string' &&
     SUPABASE_ANON_KEY.trim().length > 0 &&
-    !SUPABASE_URL.includes('your-supabase-project')
+    !SUPABASE_URL.includes('your-') && !SUPABASE_ANON_KEY.includes('your-')
   )
 }
 

@@ -1,3 +1,4 @@
+import { printDocument } from '@/utils/printing'
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
@@ -32,6 +33,7 @@ export function WorkerDetailPage() {
 
   const [worker, setWorker] = useState<Mazdoor | null>(null)
   const [entries, setEntries] = useState<MazdooriEntry[]>([])
+  const [actionError, setActionError] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
   // Modals
@@ -96,7 +98,7 @@ export function WorkerDetailPage() {
       setDeletingEntry(null)
       await loadData()
     } catch (err) {
-      console.error('Failed to delete labor entry:', err)
+      setActionError(err instanceof Error ? err.message : String(err)); setDeletingEntry(null)
     }
   }
 
@@ -124,7 +126,8 @@ export function WorkerDetailPage() {
   }
 
   return (
-    <div className="space-y-5 flex flex-col h-full">
+    <div id="worker-statement-print" className="space-y-5 flex flex-col h-full">
+      {actionError && <p role="alert" className="p-3 text-red-700 bg-red-50">{actionError}</p>}
       {/* Header Profile Card */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -166,7 +169,7 @@ export function WorkerDetailPage() {
               <span>Add Work Entry</span>
             </Button>
             <Button
-              onClick={() => window.print()}
+              onClick={() => printDocument('worker-statement-print')}
               variant="outline"
               className="flex items-center gap-1.5"
             >
@@ -296,7 +299,7 @@ export function WorkerDetailPage() {
                         type="button"
                         onClick={() => setDeletingEntry(entry)}
                         className="p-1 hover:text-red-600 hover:bg-red-50 rounded-lg text-slate-400 transition-colors"
-                        title="Delete Entry"
+                        title="Void Entry"
                       >
                         <Trash2 className="w-4 h-4 stroke-[2]" />
                       </button>
@@ -336,8 +339,8 @@ export function WorkerDetailPage() {
         isOpen={!!deletingEntry}
         onClose={() => setDeletingEntry(null)}
         onConfirm={handleDeleteEntryConfirm}
-        title="Delete Labor Entry"
-        description="Are you sure you want to void/delete this entry? The worker's running balance will be recalculated automatically."
+        title="Void Labor Entry"
+        description="Add a reversal for this entry? The original entry stays in history and the worker balance will be corrected. Invoice-linked labor cannot be voided here."
         confirmText="Delete Entry"
         variant="danger"
       />

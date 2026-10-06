@@ -1,7 +1,10 @@
+import { useEffect, useState } from 'react'
+import { printDocument } from '@/utils/printing'
+import { getBusinessSettings, DEFAULT_SETTINGS } from '@/services/sqlite.service'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Printer } from 'lucide-react'
-import { formatPKR, formatDate } from '@/utils/financial'
+import { formatPKR, formatDate, roundMoney } from '@/utils/financial'
 import type { Customer, CustomerLedgerEntry } from '@/types'
 
 interface CustomerStatementModalProps {
@@ -17,10 +20,21 @@ export function CustomerStatementModal({
   ledger,
   onClose,
 }: CustomerStatementModalProps) {
+  // Same shop name as the invoice (from Settings)
+  const [shopName, setShopName] = useState(DEFAULT_SETTINGS.businessName)
+
+  useEffect(() => {
+    if (isOpen) {
+      getBusinessSettings().then((res) => {
+        if (res?.businessName) setShopName(res.businessName)
+      }).catch(console.error)
+    }
+  }, [isOpen])
+
   if (!customer) return null
 
   const handlePrint = () => {
-    window.print()
+    printDocument('customer-statement-print')
   }
 
   const currentDate = new Date().toLocaleDateString('en-GB', {
@@ -41,7 +55,7 @@ export function CustomerStatementModal({
         <div id="customer-statement-print" className="bg-white p-6 border border-slate-200 rounded-xl space-y-5 print:border-none print:p-0">
           {/* Business Header */}
           <div className="border-b border-slate-200 pb-4 text-center">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight">ARKI PRESS & CNC SHOP</h2>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">{shopName}</h2>
             <p className="text-xs text-slate-500 font-medium mt-0.5">
               Chadar • Dabi • Chogat • Laser Cutting • CNC Cutting
             </p>
@@ -115,10 +129,10 @@ export function CustomerStatementModal({
                 <tr className="bg-slate-50 font-bold border-t border-slate-200 text-slate-900">
                   <td colSpan={2} className="py-2 px-3 text-right">Summary Totals:</td>
                   <td className="py-2 px-3 text-right text-slate-900">
-                    Rs {customer.totalPurchase.toLocaleString()}
+                    Rs {roundMoney(ledger.reduce((sum, entry) => sum + entry.debit, 0)).toLocaleString()}
                   </td>
                   <td className="py-2 px-3 text-right text-emerald-600">
-                    Rs {customer.totalPaid.toLocaleString()}
+                    Rs {roundMoney(ledger.reduce((sum, entry) => sum + entry.credit, 0)).toLocaleString()}
                   </td>
                   <td className={`py-2 px-3 text-right ${customer.balance > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                     Rs {customer.balance.toLocaleString()}

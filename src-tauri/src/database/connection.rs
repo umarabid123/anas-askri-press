@@ -29,6 +29,7 @@ impl DbState {
         // Run migrations
         run_migrations(&mut conn)
             .map_err(|e| format!("Failed to run SQLite migrations: {}", e))?;
+        crate::commands::snapshot::install_sync_triggers(&mut conn).map_err(|e| e.to_string())?;
 
         Ok(DbState(Arc::new(Mutex::new(conn))))
     }

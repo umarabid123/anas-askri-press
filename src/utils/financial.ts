@@ -10,6 +10,15 @@ export function formatCurrency(amount: number): string {
 
 export const formatPKR = formatCurrency
 
+export function roundMoney(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100
+}
+
+export function localDateKey(value: string | Date = new Date()): string {
+  const date = value instanceof Date ? value : parseDate(value)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export function calculateItemAmount(quantity: number, rate: number, mazdoori: number = 0): number {
   const q = Number(quantity) || 0
   const r = Number(rate) || 0

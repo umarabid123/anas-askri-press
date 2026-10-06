@@ -34,7 +34,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   sidebarCollapsed: false,
-  syncStatus: 'synced',
+  syncStatus: 'pending',
   isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   lastSyncTime: null,
   activeModal: null,
@@ -57,7 +57,7 @@ export const useUIStore = create<UIState>((set) => ({
 if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     useUIStore.getState().setIsOnline(true)
-    useUIStore.getState().setSyncStatus('synced')
+    useUIStore.getState().setSyncStatus('pending')
   })
   window.addEventListener('offline', () => {
     useUIStore.getState().setIsOnline(false)
