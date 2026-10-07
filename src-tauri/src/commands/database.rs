@@ -376,9 +376,15 @@ pub fn create_customer(customer: CustomerDto, state: State<DbState>) -> Result<C
 }
 
 #[tauri::command]
-pub fn create_sale(mut sale: CreateSaleDto, state: State<DbState>) -> Result<String, String> {
+pub fn create_sale(sale: CreateSaleDto, state: State<DbState>) -> Result<String, String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let number = create_sale_in_transaction(sale, &tx)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(number)
+}
+
+fn create_sale_in_transaction(mut sale: CreateSaleDto, tx: &rusqlite::Transaction<'_>) -> Result<String, String> {
 
     if sale.items.is_empty() || !sale.discount.is_finite() || sale.discount < 0.0 || !sale.paid_amount.is_finite() || sale.paid_amount < 0.0 || !["cash", "bank"].contains(&sale.payment_method.as_str()) { return Err("Invalid bill or payment".into()); }
     let mut goods = 0.0; let mut labor = 0.0; let mut gross = 0.0;
@@ -594,7 +600,6 @@ pub fn create_sale(mut sale: CreateSaleDto, state: State<DbState>) -> Result<Str
         params![queue_id, sale_id, payload],
     ).map_err(|e| e.to_string())?;
 
-    tx.commit().map_err(|e| e.to_string())?;
     Ok(invoice_number)
 }
 
@@ -1335,6 +1340,41 @@ pub fn cancel_sale(sale_id: String, reason: Option<String>, state: State<DbState
     let reason = reason.map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+    cancel_sale_in_transaction(&sale_id, reason, &tx)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn update_sale(sale_id: String, sale: CreateSaleDto, state: State<DbState>) -> Result<String, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let number = update_sale_in_transaction(&sale_id, sale, &tx)?;
+    tx.commit().map_err(|e|e.to_string())?;
+    Ok(number)
+}
+
+fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusqlite::Transaction<'_>) -> Result<String, String> {
+    let (old_number, customer_id, paid, method, created_at, cancelled): (String, Option<String>, f64, String, String, Option<String>) = tx.query_row(
+        "SELECT invoice_number, customer_id, paid_amount, payment_method, created_at, cancelled_at FROM sales WHERE id=?1",
+        params![sale_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)),
+    ).optional().map_err(|e|e.to_string())?.ok_or("Bill not found")?;
+    if cancelled.is_some() { return Err("This bill is no longer active. Open the latest bill to edit it.".into()); }
+    if sale.customer_id.as_deref().filter(|id| !id.is_empty()) != customer_id.as_deref().filter(|id| !id.is_empty()) { return Err("Keep the same customer when editing a bill.".into()); }
+    if !sale.paid_amount.is_finite() || (sale.paid_amount*100.0).round()/100.0 != paid || sale.payment_method != method { return Err("Keep the payment already received. Add any new payment from Customers.".into()); }
+    sale.id = None;
+    sale.invoice_number = None;
+    sale.notes = Some(format!("Updated from bill #{}{}", old_number, sale.notes.as_ref().filter(|n|!n.trim().is_empty()).map(|n|format!("\n{}",n)).unwrap_or_default()));
+    let number = create_sale_in_transaction(sale, &tx)?;
+    let replacement_id: String = tx.query_row("SELECT id FROM sales WHERE invoice_number=?1",params![number],|r|r.get(0)).map_err(|e|e.to_string())?;
+    tx.execute("UPDATE sales SET created_at=?1 WHERE id=?2", params![created_at,replacement_id]).map_err(|e|e.to_string())?;
+    let receipt: Option<(String,String)> = tx.query_row("SELECT payment_date,created_at FROM payments WHERE sale_id=?1 ORDER BY rowid LIMIT 1",params![sale_id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?;
+    if let Some((date,created)) = receipt { tx.execute("UPDATE payments SET payment_date=?1,created_at=?2 WHERE sale_id=?3",params![date,created,replacement_id]).map_err(|e|e.to_string())?; }
+    cancel_sale_in_transaction(sale_id, Some(format!("Updated: use bill #{}",number)), tx)?;
+    Ok(number)
+}
+
+fn cancel_sale_in_transaction(sale_id: &str, reason: Option<String>, tx: &rusqlite::Transaction<'_>) -> Result<bool, String> {
 
     let (invoice_number, customer_id, total, paid, credit, cancelled_at): (String, Option<String>, f64, f64, f64, Option<String>) = tx.query_row(
         "SELECT invoice_number, customer_id, total, paid_amount, remaining_credit, cancelled_at FROM sales WHERE id = ?1",
@@ -1402,8 +1442,76 @@ pub fn cancel_sale(sale_id: String, reason: Option<String>, state: State<DbState
         ).map_err(|e| e.to_string())?;
     }
 
-    tx.commit().map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod invoice_edit_tests {
+    use super::*;
+
+    fn setup() -> rusqlite::Connection {
+        let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON").unwrap();
+        crate::database::migrations::run_migrations(&mut conn).unwrap();
+        crate::commands::snapshot::install_sync_triggers(&mut conn).unwrap();
+        conn.execute("INSERT INTO customers (id,name,mobile) VALUES ('qa','QA Customer','03000000000')", []).unwrap();
+        conn
+    }
+
+    fn bill(rate: f64) -> CreateSaleDto {
+        serde_json::from_value(serde_json::json!({
+            "customerId":"qa","customerName":"QA Customer","customerMobile":"03000000000",
+            "items":[{"itemName":"Cutting","quantity":2,"rate":rate,"mazdoori":50,"amount":0,
+                "mazdooriTasks":[{"title":"Cutting labour","amount":50,"workerName":"Rashid"}]}],
+            "subtotal":0,"total":0,"totalMazdoori":0,"discount":0,"paidAmount":100,
+            "remainingCredit":0,"paymentMethod":"cash"
+        })).unwrap()
+    }
+
+    fn save_original(conn: &mut rusqlite::Connection) -> String {
+        let tx = conn.transaction().unwrap();
+        let number = create_sale_in_transaction(bill(100.0), &tx).unwrap();
+        tx.commit().unwrap();
+        conn.query_row("SELECT id FROM sales WHERE invoice_number=?1",params![number],|r|r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn edit_retains_original_and_receipt_date_and_recalculates_dues() {
+        let mut conn = setup();
+        let id = save_original(&mut conn);
+        conn.execute("UPDATE sales SET created_at='2025-01-02T09:00:00Z' WHERE id=?1",params![id]).unwrap();
+        conn.execute("UPDATE payments SET payment_date='2025-01-02T09:01:00Z' WHERE sale_id=?1",params![id]).unwrap();
+        let tx = conn.transaction().unwrap();
+        let number = update_sale_in_transaction(&id,bill(150.0),&tx).unwrap();
+        tx.commit().unwrap();
+        let (total, date): (f64,String) = conn.query_row("SELECT total,created_at FROM sales WHERE invoice_number=?1",params![number],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(total,350.0); assert_eq!(date,"2025-01-02T09:00:00Z");
+        let (old_total, cancelled): (f64,Option<String>) = conn.query_row("SELECT total,cancelled_at FROM sales WHERE id=?1",params![id],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(old_total,250.0); assert!(cancelled.is_some());
+        let (purchase,paid,balance): (f64,f64,f64) = conn.query_row("SELECT total_purchase,total_paid,balance FROM customers WHERE id='qa'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
+        assert_eq!((purchase,paid,balance),(350.0,100.0,250.0));
+        let worker_balance: f64 = conn.query_row("SELECT balance FROM mazdoors WHERE name='Rashid'",[],|r|r.get(0)).unwrap();
+        assert_eq!(worker_balance,50.0);
+        let (received,payment_date): (f64,String) = conn.query_row("SELECT p.amount,p.payment_date FROM payments p JOIN sales s ON s.id=p.sale_id WHERE s.cancelled_at IS NULL",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!(received,100.0); assert_eq!(payment_date,"2025-01-02T09:01:00Z");
+    }
+
+    #[test]
+    fn failure_after_replacement_creation_rolls_back_the_whole_correction() {
+        let mut conn = setup();
+        let id = save_original(&mut conn);
+        conn.execute_batch("CREATE TRIGGER reject_cancel BEFORE UPDATE OF cancelled_at ON sales WHEN NEW.cancelled_at IS NOT NULL BEGIN SELECT RAISE(ABORT,'QA cancellation failure'); END;").unwrap();
+        let queue_before: i64 = conn.query_row("SELECT COUNT(*) FROM sync_queue",[],|r|r.get(0)).unwrap();
+        {
+            let tx = conn.transaction().unwrap();
+            assert!(update_sale_in_transaction(&id,bill(150.0),&tx).is_err());
+        }
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM sales",[],|r|r.get(0)).unwrap();
+        let sequence: i64 = conn.query_row("SELECT next_invoice_number FROM business_settings",[],|r|r.get(0)).unwrap();
+        let balance: f64 = conn.query_row("SELECT balance FROM customers WHERE id='qa'",[],|r|r.get(0)).unwrap();
+        let queue_after: i64 = conn.query_row("SELECT COUNT(*) FROM sync_queue",[],|r|r.get(0)).unwrap();
+        assert_eq!(count,1); assert_eq!(sequence,1002); assert_eq!(balance,150.0); assert_eq!(queue_after,queue_before);
+    }
 }
 
 #[tauri::command]

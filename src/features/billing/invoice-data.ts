@@ -10,6 +10,7 @@ export function saleToInvoiceData(sale: Sale, customer?: Customer | null): ShopI
     customer: customer || null,
     customerName: sale.customerName || '',
     customerPhone: sale.customerMobile || '',
+    customerAddress: customer?.address || '',
     items: sale.items || [],
     subtotal: sale.subtotal,
     totalMazdoori: sale.totalMazdoori || 0,

@@ -263,7 +263,7 @@ export function CustomersPage() {
         </div>
 
         <div className="text-right">
-          <p className="text-[12px] font-medium text-slate-600 leading-tight">Total Credit (Receivables)</p>
+          <p className="text-[12px] font-medium text-slate-600 leading-tight">Customer Dues (Udhaar)</p>
           <p className="text-[20px] font-bold text-red-600 leading-tight">
             {formatPKR(totalCredit)}
           </p>

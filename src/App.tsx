@@ -4,6 +4,7 @@ import { connectivityService } from './services/connectivity.service'
 import { initDatabase } from './services/sqlite.service'
 import { syncService } from './services/sync.service'
 import { automaticBackup } from './services/files.service'
+import { Toaster } from './components/common/Toaster'
 
 export default function App() {
   const [warning, setWarning] = useState('')
@@ -31,5 +32,5 @@ export default function App() {
 
   if (error) return <div role="alert" className="p-8">Local data could not be opened: {error}. Please keep your existing data and restart the application.</div>
   if (!ready) return <div className="p-8">Opening local records…</div>
-  return <>{warning && <p role="alert" className="p-2 text-red-700">{warning}</p>}<AppRouter /></>
+  return <>{warning && <p role="alert" className="p-2 text-red-700">{warning}</p>}<AppRouter /><Toaster /></>
 }

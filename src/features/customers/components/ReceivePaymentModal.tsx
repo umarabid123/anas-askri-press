@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
 import { formatPKR } from '@/utils/financial'
+import { toast } from '@/stores/toast.store'
 import type { Customer } from '@/types'
 
 interface ReceivePaymentModalProps {
@@ -62,9 +63,11 @@ export function ReceivePaymentModal({
         paymentMethod,
         notes: notes.trim() || undefined,
       })
+      toast.success('Payment received and saved.')
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to record payment.')
+      const message = err instanceof Error ? err.message : 'Could not save the payment. Please try again.'
+      setError(message); toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -88,7 +91,7 @@ export function ReceivePaymentModal({
         {/* Customer Balance Banner */}
         <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 flex items-center justify-between">
           <div>
-            <p className="text-xs text-slate-500 font-medium">Current Outstanding Balance</p>
+            <p className="text-xs text-slate-500 font-medium">Amount Unpaid (Udhaar)</p>
             <p
               className={`text-lg font-bold ${
                 customer.balance > 0 ? 'text-red-600' : 'text-emerald-600'

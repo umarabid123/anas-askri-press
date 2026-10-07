@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isValidDateKey } from '@/utils/financial'
 export const TABLES = ['business_settings', 'customers', 'items', 'mazdoors', 'sales', 'sale_items', 'sale_item_mazdoori_tasks', 'payments', 'customer_ledger', 'mazdoori_entries', 'expenses', 'sync_queue'] as const
 export type TableName = typeof TABLES[number]
 // Tables added after the first v2 backups; older backups may omit them.
@@ -45,7 +46,7 @@ export function validateBackup(input: unknown): Backup {
   for (const item of data.tables.sale_items) if (!item.item_name || Number(item.quantity) <= 0 || Number(item.rate) < 0 || Number(item.mazdoori) < 0 || Math.abs(Number(item.quantity) * Number(item.rate) + Number(item.mazdoori) - Number(item.amount)) > 0.02) throw new Error('Invalid invoice item.')
   for (const payment of data.tables.payments) if (Number(payment.amount) <= 0 || !payment.payment_date || !['cash', 'bank'].includes(String(payment.payment_method))) throw new Error('Invalid receipt.')
   for (const task of data.tables.sale_item_mazdoori_tasks) if (!task.title || Number(task.amount) <= 0) throw new Error('Invalid labour task.')
-  for (const expense of data.tables.expenses) if (!expense.category || !/^\d{4}-\d{2}-\d{2}$/.test(String(expense.expense_date)) || Number(expense.amount) <= 0 || !['cash', 'bank'].includes(String(expense.payment_method))) throw new Error('Invalid expense.')
+  for (const expense of data.tables.expenses) if (!expense.category || !isValidDateKey(String(expense.expense_date)) || Number(expense.amount) <= 0 || !['cash', 'bank'].includes(String(expense.payment_method))) throw new Error('Invalid expense.')
   for (const item of data.tables.sale_items) {
     const tasks = data.tables.sale_item_mazdoori_tasks.filter(task => task.sale_item_id === item.id)
     if (tasks.length && Math.abs(tasks.reduce((sum, task) => sum + Number(task.amount), 0) - Number(item.mazdoori)) > 0.02) throw new Error('Labour tasks do not balance.')

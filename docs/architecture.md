@@ -421,6 +421,19 @@ Owns:
 
 ## 14. Invoice History
 
+The app serves one shop owner as a bill and record book. A bill correction is
+an atomic reversal and replacement: retain the original header, items, tasks,
+receipts and ledger rows, mark it inactive with `Updated: use bill #...`, then
+create a new sequential bill with `Updated from bill #...` in its notes. No new
+schema or cloud migration is required; this uses the existing cancellation
+support. Reports count only the active replacement and its receipt. Preserve
+the original sale date and payment receipt date on the replacement so an edit
+does not move historical cash collections to today. Later customer receipts
+and worker payouts are never erased. The customer and original payment are
+fixed during editing; new payments use the customer receipt flow. Both the
+browser transaction and native SQLite transaction commit the full correction
+or leave all records and the invoice sequence unchanged.
+
 Sale items should preserve historical values.
 
 Example:

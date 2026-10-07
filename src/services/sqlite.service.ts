@@ -3,7 +3,7 @@ import type { BusinessSettings, Customer, CustomerLedgerEntry, Expense, Mazdoor,
 import { customerSchema, type CustomerFormData } from '@/schemas'
 import type { SyncQueueRecord } from '@/types/database'
 import { prepareBill } from '@/utils/billing'
-import { localDateKey, roundMoney } from '@/utils/financial'
+import { isValidDateKey, localDateKey, roundMoney } from '@/utils/financial'
 import { useUIStore } from '@/stores/ui.store'
 import { TABLES, toRow, fromRow, validateBackup, type Backup, type Row, type Tables, type TableName } from './data-model'
 
@@ -128,13 +128,20 @@ export async function createSale(input: CreateSaleInput): Promise<string> {
   if (!['cash', 'bank'].includes(input.paymentMethod)) throw new Error('Choose cash or bank.')
   if (bill.remainingCredit > 0 && !input.customerId) throw new Error('Select a customer for a credit bill, or pay the full amount.')
   if (isTauri()) return invoke('create_sale', { sale: { ...input, ...bill } })
-  return transaction(t => {
+  return transaction(t => createSaleInTables(t, input))
+}
+
+function createSaleInTables(t: Tables, input: CreateSaleInput): string {
+    const bill = prepareBill(input.items, input.discount, input.paidAmount)
+    if (!['cash', 'bank'].includes(input.paymentMethod)) throw new Error('Choose cash or bank.')
+    if (bill.remainingCredit > 0 && !input.customerId) throw new Error('Select a customer for an unpaid bill, or enter the full payment.')
     const settings = t.business_settings[0]!
     let sequence = Number(settings.next_invoice_number)
     let invoiceNumber = input.invoiceNumber || String(settings.invoice_prefix) + '-' + String(sequence).padStart(4, '0')
     while (!input.invoiceNumber && t.sales.some(s => s.invoice_number === invoiceNumber)) invoiceNumber = String(settings.invoice_prefix) + '-' + String(++sequence).padStart(4, '0')
     if (t.sales.some(s => s.invoice_number === invoiceNumber)) throw new Error('Invoice number already exists.')
     settings.next_invoice_number = sequence + 1
+    if (input.id && t.sales.some(s => s.id === input.id)) throw new Error('Bill already exists.')
     const sale = stamp({ ...input, ...bill, invoiceNumber, id: input.id || crypto.randomUUID() })
     t.sales.push(toRow(sale))
     for (const item of bill.items) {
@@ -155,7 +162,6 @@ export async function createSale(input: CreateSaleInput): Promise<string> {
       t.customer_ledger.push(toRow(stamp({ id: crypto.randomUUID(), customerId: input.customerId, saleId: sale.id, date: sale.createdAt, description: 'Invoice #' + invoiceNumber, debit: bill.total, credit: bill.paidAmount, balance: customer.balance })))
     }
     return invoiceNumber
-  })
 }
 // Cancel keeps the invoice for history and posts reversals: the customer's
 // purchase, at-sale payment (refunded) and credit come off, and labour
@@ -163,7 +169,10 @@ export async function createSale(input: CreateSaleInput): Promise<string> {
 export async function cancelSale(saleId: string, reason = ''): Promise<boolean> {
   reason = reason.trim()
   if (isTauri()) return invoke('cancel_sale', { saleId, reason: reason || null })
-  return transaction(t => {
+  return transaction(t => cancelSaleInTables(t, saleId, reason))
+}
+
+function cancelSaleInTables(t: Tables, saleId: string, reason: string): boolean {
     const sale = found(t, 'sales', saleId)
     if (sale.cancelled_at) throw new Error('Invoice is already cancelled.')
     const cancelledAt = now()
@@ -182,6 +191,26 @@ export async function cancelSale(saleId: string, reason = ''): Promise<boolean> 
       t.mazdoori_entries.push(toRow(stamp({ id: crypto.randomUUID(), mazdoorId: worker.id, mazdoorName: worker.name, workDate: localDateKey(), workDetail: 'Voided: ' + entry.work_detail + ' (invoice cancelled)', amount: -amount, paidAmount: 0, balance: worker.balance, notes: 'Void:' + entry.id })))
     }
     return true
+}
+
+// A correction retains the original bill and all receipt/worker history.
+// Both reversal and replacement are committed together, or neither is saved.
+export async function updateSale(saleId: string, input: CreateSaleInput): Promise<string> {
+  const bill = prepareBill(input.items, input.discount, input.paidAmount)
+  if (isTauri()) return invoke('update_sale', { saleId, sale: { ...input, ...bill } })
+  return transaction(t => {
+    const original = found(t, 'sales', saleId)
+    if (original.cancelled_at) throw new Error('This bill is no longer active. Open the latest bill to edit it.')
+    if ((input.customerId || null) !== (original.customer_id || null)) throw new Error('Keep the same customer when editing a bill.')
+    if (bill.paidAmount !== Number(original.paid_amount) || input.paymentMethod !== original.payment_method) throw new Error('Keep the payment already received. Add any new payment from Customers.')
+    const invoiceNumber = createSaleInTables(t, { ...input, id: undefined, invoiceNumber: undefined, notes: ['Updated from bill #' + original.invoice_number, input.notes].filter(Boolean).join('\n') })
+    const replacement = t.sales.find(s => s.invoice_number === invoiceNumber)!
+    replacement.created_at = original.created_at
+    const oldPayment = t.payments.find(p => p.sale_id === saleId)
+    const newPayment = t.payments.find(p => p.sale_id === replacement.id)
+    if (oldPayment && newPayment) { newPayment.payment_date = oldPayment.payment_date; newPayment.created_at = oldPayment.created_at }
+    cancelSaleInTables(t, saleId, 'Updated: use bill #' + invoiceNumber)
+    return invoiceNumber
   })
 }
 export interface ExpenseInput { expenseDate: string; category: string; description?: string; amount: number; paymentMethod: string }
@@ -192,7 +221,7 @@ export async function getExpenses(): Promise<Expense[]> {
 export async function createExpense(input: ExpenseInput): Promise<Expense> {
   const amount = roundMoney(input.amount); assertAmount(amount, 'Expense')
   if (!input.category.trim()) throw new Error('Choose an expense category.')
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.expenseDate)) throw new Error('Enter a valid expense date.')
+  if (!isValidDateKey(input.expenseDate)) throw new Error('Enter a valid expense date.')
   if (!['cash', 'bank'].includes(input.paymentMethod)) throw new Error('Choose cash or bank.')
   const expense = stamp({ id: crypto.randomUUID(), expenseDate: input.expenseDate, category: input.category.trim(), description: input.description?.trim() || null, amount, paymentMethod: input.paymentMethod }) as Expense
   if (isTauri()) return invoke('create_expense', { expense })
@@ -224,7 +253,7 @@ export async function getMazdooriEntries(mazdoorId?: string): Promise<MazdooriEn
 }
 export async function createMazdooriEntry(entry: { mazdoorId: string; mazdoorName: string; workDate: string; workDetail: string; amount: number; paidAmount: number; notes?: string }): Promise<MazdooriEntry> {
   entry = { ...entry, amount: roundMoney(entry.amount), paidAmount: roundMoney(entry.paidAmount) }; assertAmount(entry.amount); if (!Number.isFinite(entry.paidAmount) || entry.paidAmount < 0 || entry.paidAmount > entry.amount) throw new Error('Advance cannot exceed the labor amount.')
-  if (!entry.workDetail.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.workDate)) throw new Error('Enter work details and a valid date.')
+  if (!entry.workDetail.trim() || !isValidDateKey(entry.workDate)) throw new Error('Enter work details and a valid date.')
   const newEntry = stamp({ ...entry, id: crypto.randomUUID(), balance: entry.amount - entry.paidAmount })
   if (isTauri()) return invoke('create_mazdoori_entry', { entry: newEntry })
   return transaction(t => {

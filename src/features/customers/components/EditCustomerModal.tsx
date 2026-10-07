@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { customerSchema } from '@/schemas'
+import { toast } from '@/stores/toast.store'
 import type { Customer } from '@/types'
 
 interface EditCustomerModalProps {
@@ -59,8 +60,10 @@ export function EditCustomerModal({
         mobile: validation.data.mobile,
         address: validation.data.address,
       })
+      toast.success('Customer details saved.')
       onClose()
     } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Could not save the customer details.')
       setErrors({
         general: err instanceof Error ? err.message : 'Failed to update customer',
       })

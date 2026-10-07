@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FilePlus, Plus, Receipt, ShoppingCart, Users, Wallet } from 'lucide-react'
+import { FilePlus, ShoppingCart, Users, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { StatCard } from '@/components/ui/StatCard'
 import { ROUTES } from '@/constants/routes'
-import { getSales, getPayments, getCustomers, getExpenses, type Receipt as Payment } from '@/services/sqlite.service'
+import { getSales, getPayments, getCustomers, type Receipt as Payment } from '@/services/sqlite.service'
 import { formatPKR, formatDate, localDateKey, roundMoney } from '@/utils/financial'
 import { activeSales, activePayments } from '@/utils/reports'
 import { BillPreviewModal } from '@/features/billing/components/BillPreviewModal'
 import type { ShopInvoiceData } from '@/features/billing/components/ShopInvoiceTemplate'
 import { saleToInvoiceData } from '@/features/billing/invoice-data'
-import type { Customer, Expense, Sale } from '@/types'
+import { startNewBill } from '@/features/billing/bill-actions'
+import type { Customer, Sale } from '@/types'
 
-interface DashboardData { sales: Sale[]; payments: Payment[]; customers: Customer[]; expenses: Expense[] }
+interface DashboardData { sales: Sale[]; payments: Payment[]; customers: Customer[] }
 
 export function DashboardPage() {
   const navigate = useNavigate()
@@ -22,8 +23,8 @@ export function DashboardPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<ShopInvoiceData | null>(null)
 
   useEffect(() => {
-    Promise.all([getSales(), getPayments(), getCustomers(), getExpenses()])
-      .then(([sales, payments, customers, expenses]) => setData({ sales, payments, customers, expenses }))
+    Promise.all([getSales(), getPayments(), getCustomers()])
+      .then(([sales, payments, customers]) => setData({ sales, payments, customers }))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
   }, [reloadKey])
 
@@ -39,7 +40,6 @@ export function DashboardPage() {
   const today = localDateKey()
   const todaySales = activeSales(data.sales).filter((s) => localDateKey(s.createdAt) === today)
   const receivedToday = roundMoney(activePayments(data.payments, data.sales).filter((p) => localDateKey(p.paymentDate) === today).reduce((sum, p) => sum + p.amount, 0))
-  const expensesToday = roundMoney(data.expenses.filter((e) => e.expenseDate === today).reduce((sum, e) => sum + e.amount, 0))
   const debtors = data.customers.filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance)
   const receivables = roundMoney(debtors.reduce((sum, c) => sum + c.balance, 0))
   const recentInvoices = data.sales.slice(0, 6)
@@ -53,15 +53,11 @@ export function DashboardPage() {
       {/* Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Dashboard</h1>
+          <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Home</h1>
           <p className="text-[13px] text-slate-500 mt-0.5">Today's summary · {formatDate(today + 'T00:00:00')}</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={() => navigate(ROUTES.EXPENSES, { state: { addExpense: true } })} className="flex items-center gap-1.5">
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Add Expense</span>
-          </Button>
-          <Button onClick={() => navigate(ROUTES.NEW_BILL)} className="bg-[#1877F2] hover:bg-blue-600 flex items-center gap-1.5" title="Shortcut: F2">
+          <Button onClick={() => { if (startNewBill()) navigate(ROUTES.NEW_BILL) }} className="bg-[#1877F2] hover:bg-blue-600 flex items-center gap-1.5" title="Shortcut: F2">
             <FilePlus className="w-4 h-4 stroke-[2.5]" />
             <span>New Bill</span>
             <kbd className="ml-1 text-[10px] font-semibold bg-white/20 rounded px-1.5 py-0.5">F2</kbd>
@@ -70,7 +66,7 @@ export function DashboardPage() {
       </div>
 
       {/* Today's numbers */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard
           title="Today's Sales"
           value={formatPKR(roundMoney(todaySales.reduce((sum, s) => sum + s.total, 0)))}
@@ -88,15 +84,7 @@ export function DashboardPage() {
           onClick={() => navigate(ROUTES.REPORTS)}
         />
         <StatCard
-          title="Expenses Today"
-          value={formatPKR(expensesToday)}
-          subtitle={`Net today: ${formatPKR(roundMoney(receivedToday - expensesToday))}`}
-          variant="red"
-          icon={<Receipt className="w-5 h-5" />}
-          onClick={() => navigate(ROUTES.EXPENSES)}
-        />
-        <StatCard
-          title="Total Receivables (Udhaar)"
+          title="Customer Dues (Udhaar)"
           value={formatPKR(receivables)}
           subtitle={`${debtors.length} customer${debtors.length === 1 ? '' : 's'} owe`}
           variant="amber"
@@ -153,7 +141,7 @@ export function DashboardPage() {
                     <span className="min-w-0">
                       <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                         {sale.invoiceNumber}
-                        {sale.cancelledAt && <span className="text-[10px] font-bold uppercase text-red-600 bg-red-50 border border-red-200 rounded px-1.5">Cancelled</span>}
+                        {sale.cancelledAt && <span className="text-[10px] font-bold uppercase text-red-600 bg-red-50 border border-red-200 rounded px-1.5">{sale.cancelReason?.startsWith('Updated:') ? 'Old Bill' : 'Cancelled'}</span>}
                       </span>
                       <span className="block text-xs text-slate-500 truncate">{sale.customerName || 'Cash Sale'} · {formatDate(sale.createdAt)}</span>
                     </span>

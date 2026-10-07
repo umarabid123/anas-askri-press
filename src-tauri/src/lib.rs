@@ -36,6 +36,7 @@ pub fn run() {
             get_customer_ledger,
             receive_payment,
             create_sale,
+            update_sale,
             get_sync_queue,
             update_sync_status,
             get_mazdoors,

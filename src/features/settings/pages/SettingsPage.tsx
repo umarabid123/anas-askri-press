@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { toast } from '@/stores/toast.store'
 import { Check, Loader2, Printer, Save, Store } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -61,10 +62,12 @@ export function SettingsPage() {
     try {
       const updated = await updateBusinessSettings(settings)
       setSettings(updated)
+      toast.success('Shop settings saved.')
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to save settings.')
+      const message = err instanceof Error ? err.message : 'Could not save settings. Please try again.'
+      setErrorMessage(message); toast.error(message)
     } finally {
       setIsSaving(false)
     }

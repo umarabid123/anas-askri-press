@@ -1,8 +1,14 @@
 import { create } from 'zustand'
-import type { Customer, ItemMazdooriTask, SaleItem } from '../types'
+import type { Customer, ItemMazdooriTask, Sale, SaleItem } from '../types'
 import { calculateCredit, calculateItemAmount, calculateSaleTotal, calculateSubtotal } from '../utils/financial'
 
 interface CartState {
+  savingBill: boolean
+  setSavingBill: (saving: boolean) => void
+  draftId: string
+  useItemsAsNewBill: () => void
+  editingSale: Sale | null
+  editBill: (sale: Sale, customer: Customer | null) => void
   customer: Customer | null
   items: SaleItem[]
   discount: number
@@ -41,6 +47,12 @@ const createInitialItems = (): SaleItem[] => [
 ]
 
 export const useCartStore = create<CartState>((set, get) => ({
+  savingBill: false,
+  setSavingBill: savingBill => set({ savingBill }),
+  draftId: crypto.randomUUID(),
+  useItemsAsNewBill: () => set(state => ({ draftId: crypto.randomUUID(), editingSale: null, paidAmount: 0, paymentMethod: 'cash', notes: state.notes.split('\n').filter(line => !line.startsWith('Updated from bill #')).join('\n') })),
+  editingSale: null,
+  editBill: (sale, customer) => set({ draftId: crypto.randomUUID(), editingSale: structuredClone(sale), customer, items: structuredClone(sale.items), discount: sale.discount, paidAmount: sale.paidAmount, paymentMethod: sale.paymentMethod, notes: sale.notes || '' }),
   customer: null,
   items: createInitialItems(),
   discount: 0,
@@ -144,6 +156,8 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   resetCart: () =>
     set({
+      draftId: crypto.randomUUID(),
+      editingSale: null,
       customer: null,
       items: [
         {

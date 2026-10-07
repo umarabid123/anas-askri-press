@@ -5,7 +5,6 @@ import {
   ChevronRight,
   FileText,
   LayoutDashboard,
-  Receipt,
   Settings,
   Smile,
   Users,
@@ -14,6 +13,7 @@ import {
 import { ROUTES } from '@/constants/routes'
 import { useUIStore } from '@/stores/ui.store'
 import { cn } from '@/utils/cn'
+import { startNewBill } from '@/features/billing/bill-actions'
 
 interface NavItem {
   name: string
@@ -22,11 +22,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { name: 'Dashboard', to: ROUTES.DASHBOARD, icon: LayoutDashboard },
+  { name: 'Home', to: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { name: 'New Bill', to: ROUTES.NEW_BILL, icon: FileText },
   { name: 'Customers', to: ROUTES.CUSTOMERS, icon: Users },
   { name: 'Mazdoori', to: ROUTES.MAZDOORI, icon: UserCheck },
-  { name: 'Expenses', to: ROUTES.EXPENSES, icon: Receipt },
   { name: 'Reports', to: ROUTES.REPORTS, icon: BarChart2 },
   { name: 'Settings', to: ROUTES.SETTINGS, icon: Settings },
 ]
@@ -67,6 +66,7 @@ export function Sidebar() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                onClick={event => { if (item.to === ROUTES.NEW_BILL && !startNewBill()) event.preventDefault() }}
                 end={item.to === ROUTES.DASHBOARD}
                 title={sidebarCollapsed ? item.name : undefined}
                 className={({ isActive }) =>

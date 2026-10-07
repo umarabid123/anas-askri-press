@@ -4,6 +4,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Textarea'
 import { cancelSale } from '@/services/sqlite.service'
+import { toast } from '@/stores/toast.store'
 import { formatPKR } from '@/utils/financial'
 import type { ShopInvoiceData } from './ShopInvoiceTemplate'
 
@@ -24,10 +25,12 @@ export function CancelInvoiceDialog({ isOpen, invoice, onClose, onCancelled }: C
     setIsSaving(true); setError('')
     try {
       await cancelSale(invoice.saleId, reason)
+      toast.success(`Bill #${invoice.invoiceNumber} cancelled.`)
       setReason('')
       onCancelled()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message); toast.error(message)
     } finally {
       setIsSaving(false)
     }
@@ -39,14 +42,14 @@ export function CancelInvoiceDialog({ isOpen, invoice, onClose, onCancelled }: C
       onClose={isSaving ? () => {} : onClose}
       size="md"
       showCloseButton={!isSaving}
-      title={`Cancel Invoice ${invoice.invoiceNumber}?`}
+      title={`Cancel bill ${invoice.invoiceNumber}?`}
       footer={
         <>
           <Button type="button" variant="outline" onClick={onClose} disabled={isSaving}>
-            Keep Invoice
+            Keep Bill
           </Button>
           <Button type="button" variant="danger" onClick={handleConfirm} isLoading={isSaving}>
-            Cancel Invoice
+            Cancel Bill
           </Button>
         </>
       }
@@ -55,12 +58,12 @@ export function CancelInvoiceDialog({ isOpen, invoice, onClose, onCancelled }: C
         <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <p className="font-semibold">The invoice stays in history, marked CANCELLED. This cannot be undone.</p>
+            <p className="font-semibold">The bill stays in history as cancelled. You cannot undo this.</p>
             <ul className="list-disc pl-4 space-y-0.5 text-[13px]">
               <li>Bill total {formatPKR(invoice.total)} is removed from sales and reports.</li>
-              {invoice.remainingCredit > 0 && <li>Customer credit drops by {formatPKR(invoice.remainingCredit)}.</li>}
+              {invoice.remainingCredit > 0 && <li>Customer dues go down by {formatPKR(invoice.remainingCredit)}.</li>}
               {invoice.paidAmount > 0 && <li>{formatPKR(invoice.paidAmount)} paid at the sale is recorded as refunded.</li>}
-              {(invoice.totalMazdoori || 0) > 0 && <li>Labour posted to workers from this bill is reversed.</li>}
+              {(invoice.totalMazdoori || 0) > 0 && <li>This bill's mazdoori is removed from worker dues.</li>}
             </ul>
           </div>
         </div>

@@ -119,9 +119,9 @@ export function ReportsPage() {
       {/* Header Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Financial Reports</h1>
+          <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Reports</h1>
           <p className="text-[13px] text-slate-500 mt-0.5">
-            Audit business revenue, customer receivables, daily turnovers, and labor costs
+            See your sales, payments received, customer dues, and mazdoori
           </p>
         </div>
 
@@ -203,7 +203,7 @@ export function ReportsPage() {
         {/* Card 3: Receivables (Credit Owed by Customers) */}
         <div className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Client Receivables</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Customer Dues (Udhaar)</span>
             <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
               <Users className="w-4 h-4 stroke-[2.2]" />
             </div>
@@ -311,7 +311,7 @@ export function ReportsPage() {
                         <td className="py-2.5 px-3 text-center text-xs text-slate-500">{i + 1}</td>
                         <td className="py-2.5 px-4 font-bold text-slate-900 text-xs">
                           {sale.invoiceNumber}
-                          {sale.cancelledAt && <span className="ml-1.5 text-[10px] font-bold uppercase text-red-600 bg-red-50 border border-red-200 rounded px-1.5">Cancelled</span>}
+                          {sale.cancelledAt && <span className="ml-1.5 text-[10px] font-bold uppercase text-red-600 bg-red-50 border border-red-200 rounded px-1.5">{sale.cancelReason?.startsWith('Updated:') ? 'Old Bill' : 'Cancelled'}</span>}
                         </td>
                         <td className="py-2.5 px-4 text-xs text-slate-600 whitespace-nowrap">
                           {sale.createdAt ? formatDate(sale.createdAt) : '-'}
@@ -361,7 +361,7 @@ export function ReportsPage() {
                     <th className="py-2.5 px-4">Mobile</th>
                     <th className="py-2.5 px-4 text-right">Total Purchases</th>
                     <th className="py-2.5 px-4 text-right">Total Paid</th>
-                    <th className="py-2.5 px-4 text-right">Receivable Balance</th>
+                    <th className="py-2.5 px-4 text-right">Amount Unpaid</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -394,11 +394,11 @@ export function ReportsPage() {
                 <thead>
                   <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                     <th className="py-2.5 px-3 w-10 text-center">#</th>
-                    <th className="py-2.5 px-4">Worker / Partner Name</th>
+                    <th className="py-2.5 px-4">Worker Name</th>
                     <th className="py-2.5 px-4">Phone</th>
                     <th className="py-2.5 px-4 text-right">Total Work Done</th>
                     <th className="py-2.5 px-4 text-right">Total Paid Out</th>
-                    <th className="py-2.5 px-4 text-right">Outstanding Liability</th>
+                    <th className="py-2.5 px-4 text-right">Amount to Pay Worker</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">

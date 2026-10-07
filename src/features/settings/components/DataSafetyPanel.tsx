@@ -9,11 +9,12 @@ import { isTauri, restoreDatabase } from '@/services/sqlite.service'
 import { automaticBackup, exportBackup, saveFile } from '@/services/files.service'
 import { getSupabaseClient, isSupabaseConfigured } from '@/services/supabase'
 import { syncService } from '@/services/sync.service'
+import { toast } from '@/stores/toast.store'
 
 export function DataSafetyPanel() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
+  const setMessage = (message: string) => { if (message) toast.info(message) }
   const [error, setError] = useState('')
   const [pending, setPending] = useState<Backup | null>(null)
   const [daily, setDaily] = useState(localStorage.getItem('arki_daily_backup') === 'true')
@@ -30,7 +31,7 @@ export function DataSafetyPanel() {
   async function action(work: () => Promise<void>) {
     if (busy) return
     setBusy(true); setError(''); setMessage('')
-    try { await work() } catch (err) { setError(err instanceof Error ? err.message : String(err)) } finally { setBusy(false) }
+    try { await work() } catch (err) { const message = err instanceof Error ? err.message : String(err); setError(message); toast.error(message) } finally { setBusy(false) }
   }
   const stage = (input: unknown) => { setPending(validateBackup(input)) }
   const pick = () => action(async () => {
@@ -44,7 +45,6 @@ export function DataSafetyPanel() {
   })
   return <Card className="p-5 space-y-4">
     <h2 className="font-semibold">Backups & Cloud Records</h2>
-    {message && <p role="status" className="p-3 bg-emerald-50 text-emerald-800">{message}</p>}
     {error && <p role="alert" className="p-3 bg-red-50 text-red-700">{error}</p>}
     <p className="text-sm text-slate-600">Backup files contain all invoices, item details, receipts, customer and worker ledgers, and settings. JSON files are not encrypted; keep them somewhere private.</p>
     <div className="flex flex-wrap gap-2">

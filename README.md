@@ -1,6 +1,6 @@
 # Arki POS — Point of Sale & Workshop Management
 
-Offline-first desktop POS and workshop ledger for **Anas Arki Press & Laser Cutting**. It creates free-form invoices, tracks customer credit and worker labour separately, and keeps full invoice/payment history.
+An offline desktop bill and record book for the owner of **Anas Arki Press & Laser Cutting**. It saves bills, customer dues and worker mazdoori, with full payment history. It is intended for one shop, rather than a service for multiple businesses.
 
 Built with a **hybrid online/offline desktop architecture** using Tauri 2, React, TypeScript, Tailwind CSS, SQLite, and Supabase.
 
@@ -70,14 +70,18 @@ Cloud sync is optional. To enable it, set `VITE_SUPABASE_URL` and `VITE_SUPABASE
 
 ### Day-to-day features
 
-- **Dashboard** (home page): today's sales, money received, expenses, total receivables, highest balances and recent invoices.
+- **Notifications**: short success, error and information toasts appear at the top right, including above the bill preview. They can be closed; hovering or focusing pauses the timeout. Form errors and important instructions stay visible in the form. Only the latest three notifications are shown, and repeated identical messages are merged.
+- **Edit Bill**: open a saved bill and select *Edit Bill*. Change the items, quantity, rates, discount, notes or mazdoori, then select *Save Changes*. The original remains as **Old Bill**, with a reference to the new bill number. Both changes save together. Reports count the corrected bill once and retain the original sale and receipt dates. Later customer receipts and worker payouts stay in the record. The customer, payment already received and payment method stay fixed; record additional payments from **Customers**. The corrected total cannot be less than the payment already received.
+- **New Bill** in the preview opens a fresh bill form. If another bill has unsaved changes, the app asks before leaving it.
+- **New Bill** from the sidebar, Home, customer page or keyboard shortcut also clears edit mode and opens a fresh form. Old or cancelled bills clearly show that they cannot be updated. **Use Items as New Bill** keeps entered items, the customer and discount, while clearing the old payment and edit link; enter the payment for this new bill before saving. An older date alone does not prevent editing an active bill.
+- **Entry Status** in customer history describes the actual record: Bill Added, Cancelled, Old Bill, Updated Bill, Bill Updated or Payment Received. It does not display cloud upload state or assume which bill a later account payment settles.
+- **Dashboard** (home page): today's sales, money received, total receivables, highest balances and recent invoices.
 - **Cancel Invoice**: open a saved invoice (Reports, customer ledger/Invoices tab, dashboard) and press *Cancel Invoice*. The invoice stays in history stamped CANCELLED; the customer's purchase and credit are reversed, any amount paid at the sale is recorded as refunded, labour posted to workers is voided, and reports stop counting it. A cancellation cannot be undone.
-- **Expenses**: record shop spending by date, category and cash/bank; filter by today/month/all and by category.
 - **Keyboard shortcuts**: `F2` or `Alt+N` new bill (also `Ctrl+N` in the desktop app; Chrome reserves it), `Ctrl+S` save bill, `Enter` next field and a new line after the last field.
 
 ### What is verified
 
-`npm test` covers billing arithmetic, invoice cancellation reversals, expenses, invalid input rejection, customer and worker ledgers, atomic rollback, backup/restore, legacy migration, complete sync batches, retry behavior and reports beyond 500 invoices. The frontend production build also passes. The repository includes a Windows CI job for native Rust tests and installer packaging.
+`npm test` covers billing arithmetic, bill edits and history, retained receipt dates, invoice cancellation reversals, expenses, invalid input rejection, customer and worker ledgers, atomic rollback, backup/restore, legacy migration, complete sync batches, retry behavior and reports beyond 500 invoices. The frontend production build also passes. The repository includes a Windows CI job for native Rust tests and installer packaging, including native correction and rollback tests.
 
 Physical printer output, the native Windows installer, and the live Supabase project still need to be exercised on the target workstation before release.
 
@@ -96,7 +100,6 @@ src/
 │   ├── billing/          # New Bill, items table, and bill summary
 │   ├── customers/        # Customer list, ledger, invoices, and credit balance
 │   ├── dashboard/        # Today's summary home page
-│   ├── expenses/         # Shop expenses
 │   ├── mazdoori/         # Worker management and daily work entries
 │   ├── reports/          # Daily, sales, customer, and mazdoori reports
 │   └── settings/         # Business info, receipts, and database backup
