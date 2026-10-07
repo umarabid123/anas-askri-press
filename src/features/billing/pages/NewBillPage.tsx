@@ -562,8 +562,8 @@ export function NewBillPage() {
                             isMazdooriInvalid
                               ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900'
                               : item.mazdoori > 0
-                              ? 'text-purple-700 border-purple-300 bg-purple-50/30 focus:border-purple-500 focus:ring-purple-500'
-                              : 'text-slate-900 border-slate-200 focus:border-blue-500 focus:ring-blue-500'
+                                ? 'text-purple-700 border-purple-300 bg-purple-50/30 focus:border-purple-500 focus:ring-purple-500'
+                                : 'text-slate-900 border-slate-200 focus:border-blue-500 focus:ring-blue-500'
                           )}
                         />
                       </td>
