@@ -1,12 +1,10 @@
 import { NavLink } from 'react-router-dom'
 import {
-  BarChart2,
   ChevronLeft,
   ChevronRight,
   FileText,
   LayoutDashboard,
   Settings,
-  Smile,
   Users,
   UserCheck,
 } from 'lucide-react'
@@ -24,9 +22,10 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { name: 'Home', to: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { name: 'New Bill', to: ROUTES.NEW_BILL, icon: FileText },
+  { name: 'All Records', to: ROUTES.BILLS, icon: FileText },
   { name: 'Customers', to: ROUTES.CUSTOMERS, icon: Users },
   { name: 'Mazdoori', to: ROUTES.MAZDOORI, icon: UserCheck },
-  { name: 'Reports', to: ROUTES.REPORTS, icon: BarChart2 },
+  // { name: 'Reports', to: ROUTES.REPORTS, icon: BarChart2 },
   { name: 'Settings', to: ROUTES.SETTINGS, icon: Settings },
 ]
 
@@ -89,7 +88,7 @@ export function Sidebar() {
         </nav>
       </div>
 
-      {/* Bottom "Simple Easy For Everyone" Pill Box */}
+      {/* Bottom "Simple Easy For Everyone" Pill Box
       {sidebarCollapsed ? (
         <div
           className="bg-[#E2EDF8] rounded-xl p-2.5 flex items-center justify-center mb-4 cursor-default shadow-2xs"
@@ -106,7 +105,7 @@ export function Sidebar() {
             <p className="font-normal text-slate-600 text-[11px]">For Everyone</p>
           </div>
         </div>
-      )}
+      )} */}
     </aside>
   )
 }

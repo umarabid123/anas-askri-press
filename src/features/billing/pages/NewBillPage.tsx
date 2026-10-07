@@ -1,10 +1,11 @@
 import { getBusinessSettings } from '@/services/sqlite.service'
 import { printDocument } from '@/utils/printing'
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ChevronDown,
   FileCheck,
-  FileText,
+  FileEdit,
   HardHat,
   Landmark,
   Loader2,
@@ -15,6 +16,7 @@ import {
   User,
   X,
 } from 'lucide-react'
+import { ROUTES } from '@/constants/routes'
 import { PAYMENT_METHODS } from '@/constants/business'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -48,11 +50,8 @@ export function NewBillPage() {
     customer,
     setCustomer,
     items,
-    discount,
-    setDiscount,
     paidAmount,
     paymentMethod,
-    notes,
     addItem,
     updateItem,
     removeItem,
@@ -60,7 +59,6 @@ export function NewBillPage() {
     removeItemMazdooriTask,
     setPaidAmount,
     setPaymentMethod,
-    setNotes,
     resetCart,
     getGoodsSubtotal,
     getTotalMazdoori,
@@ -69,6 +67,7 @@ export function NewBillPage() {
   } = useCartStore()
 
   const { customers, addCustomer } = useCustomers()
+  const navigate = useNavigate()
 
   // Customer dropdown search state
   const [customerSearch, setCustomerSearch] = useState('')
@@ -84,6 +83,7 @@ export function NewBillPage() {
   // Saving state & feedback
   const [isSaving, setIsSaving] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [attemptedSave, setAttemptedSave] = useState(false)
   const saveLock = useRef(false)
   const [editCheck, setEditCheck] = useState<{ id: string; reason: string | null } | null>(null)
   const editReason = editingSale && editCheck?.id === editingSale.id ? editCheck.reason : null
@@ -92,7 +92,7 @@ export function NewBillPage() {
 
   useEffect(() => useCartStore.subscribe((next, previous) => {
     if (next.draftId === previous.draftId) return
-    setErrorMessage(null); setEditCheck(null)
+    setErrorMessage(null); setEditCheck(null); setAttemptedSave(false)
     setCustomerSearch(''); setIsCustomerDropdownOpen(false)
     setActiveMazdooriItemId(null); setIsAddCustomerOpen(false)
     setIsPreviewOpen(false); setPreviewInvoiceData(null)
@@ -175,6 +175,37 @@ export function NewBillPage() {
   // Perform Save Bill Transaction
   const handleSaveBill = async (andThen?: 'preview' | 'whatsapp' | 'print'): Promise<string | null> => {
     setErrorMessage(null)
+    setAttemptedSave(true)
+
+    // Validate all items: Description, Qty, Rate, and Mazdoori are required
+    for (let idx = 0; idx < items.length; idx++) {
+      const it = items[idx]
+      const rowNum = idx + 1
+      if (!it.itemName.trim()) {
+        const msg = `Row #${rowNum}: Item / Description is required.`
+        setErrorMessage(msg)
+        toast.error(msg)
+        return null
+      }
+      if (!it.quantity || it.quantity <= 0) {
+        const msg = `Row #${rowNum} ("${it.itemName.trim()}"): Qty/Kg is required and must be greater than 0.`
+        setErrorMessage(msg)
+        toast.error(msg)
+        return null
+      }
+      if (!it.rate || it.rate <= 0) {
+        const msg = `Row #${rowNum} ("${it.itemName.trim()}"): Rate (Rs) is required and must be greater than 0.`
+        setErrorMessage(msg)
+        toast.error(msg)
+        return null
+      }
+      if (it.mazdoori === undefined || it.mazdoori === null || isNaN(it.mazdoori) || it.mazdoori < 0) {
+        const msg = `Row #${rowNum} ("${it.itemName.trim()}"): Mazdoori (Rs) is required (enter 0 if no labor charges).`
+        setErrorMessage(msg)
+        toast.error(msg)
+        return null
+      }
+    }
 
     if (saveLock.current || editBlocked) return null
     saveLock.current = true
@@ -185,7 +216,7 @@ export function NewBillPage() {
         const reason = editBlockReason(editingSale.id, await getSales())
         if (reason) { setEditCheck({ id: editingSale.id, reason }); return null }
       }
-      const bill = prepareBill(items, discount, paidAmount)
+      const bill = prepareBill(items, 0, paidAmount)
       const validItems = bill.items
       const input = {
         ...bill,
@@ -193,7 +224,7 @@ export function NewBillPage() {
         customerName: customer?.name || null,
         customerMobile: customer?.mobile || null,
         paymentMethod,
-        notes: notes.trim() || undefined,
+        notes: undefined,
       }
       const invoiceNumber = editingSale ? await updateSale(editingSale.id, input) : await createSale(input)
 
@@ -280,9 +311,9 @@ export function NewBillPage() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-5 items-stretch min-h-full">
-      {/* Left Column: Bill Entry Form (8 cols) */}
-      <div className="col-span-12 xl:col-span-8 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
+    <div className="flex flex-row gap-5 items-stretch min-h-full">
+      {/* Left Column: Bill Entry Form */}
+      <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
         <div className="space-y-4">
           {/* Header Title & Subtitle */}
           <div className="flex items-center justify-between">
@@ -292,25 +323,34 @@ export function NewBillPage() {
                 {editingSale ? `Editing bill #${editingSale.invoiceNumber}. Change the items, rates, or mazdoori below.` : 'Add the work or items, enter payment received, then save the bill.'}
               </p>
             </div>
-            <Button type="button" variant="outline" disabled={isSaving} onClick={() => { startNewBill() }} className="flex items-center gap-1.5">
-              <Plus className="w-4 h-4" /> New Bill
-            </Button>
-            {customer && (
-              <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl">
-                <User className="w-4 h-4 text-blue-600" />
-                <span className="text-xs font-bold text-blue-900">{customer.name}</span>
-                <span className="text-xs text-blue-600">({customer.mobile})</span>
-                <button
-                  type="button"
-                  onClick={handleClearCustomer}
-                  disabled={!!editingSale}
-                  className="text-blue-400 hover:text-blue-700 ml-1"
-                  title="Clear customer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2.5">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate(ROUTES.BILLS)}
+                className="flex items-center gap-1.5 text-xs h-9"
+                title="Search and update previous bills"
+              >
+                <FileEdit className="w-3.5 h-3.5 text-blue-600" />
+                <span>Update Bill</span>
+              </Button>
+              {customer && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl">
+                  <User className="w-4 h-4 text-blue-600" />
+                  <span className="text-xs font-bold text-blue-900">{customer.name}</span>
+                  <span className="text-xs text-blue-600">({customer.mobile})</span>
+                  <button
+                    type="button"
+                    onClick={handleClearCustomer}
+                    disabled={!!editingSale}
+                    className="text-blue-400 hover:text-blue-700 ml-1 cursor-pointer"
+                    title="Clear customer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {editingSale && (
@@ -379,9 +419,8 @@ export function NewBillPage() {
                           </div>
                           <div className="text-right">
                             <span
-                              className={`font-semibold ${
-                                cust.balance > 0 ? 'text-red-600' : 'text-emerald-600'
-                              }`}
+                              className={`font-semibold ${cust.balance > 0 ? 'text-red-600' : 'text-emerald-600'
+                                }`}
                             >
                               Balance: {formatPKR(cust.balance)}
                             </span>
@@ -405,20 +444,25 @@ export function NewBillPage() {
           </fieldset>
 
           {/* Items Table with Mazdoori Column */}
-          <div className="border border-slate-200/80 rounded-xl overflow-hidden">
-            <table className="w-full text-left text-sm border-collapse">
+          <div className="border border-slate-200/80 rounded-xl overflow-x-auto">
+            <table className="w-full min-w-[550px] text-left text-sm border-collapse">
               <thead>
                 <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                   <th className="py-2.5 px-3 w-8 text-center">#</th>
                   <th className="py-2.5 px-3">
-                    Item / Description <span className="font-normal text-slate-500 text-[11px]">(Product or service)</span>
+                    Item / Description <span className="text-red-500 font-bold">*</span> <span className="font-normal text-slate-500 text-[11px]">(Product or service)</span>
                   </th>
-                  <th className="py-2.5 px-2 w-16 text-center">Qty</th>
-                  <th className="py-2.5 px-2 w-24 text-center">Rate (Rs)</th>
-                  <th className="py-2.5 px-2 w-36 text-center">
+                  <th className="py-2.5 px-2 w-20 text-center">
+                    Qty/Kg <span className="text-red-500 font-bold">*</span>
+                  </th>
+                  <th className="py-2.5 px-2 w-24 text-center">
+                    Rate (Rs) <span className="text-red-500 font-bold">*</span>
+                  </th>
+                  <th className="py-2.5 px-2 w-28 text-center">
                     <span className="flex items-center justify-center gap-1">
                       <HardHat className="w-3.5 h-3.5 text-purple-600 stroke-[2.2]" />
                       <span>Mazdoori (Rs)</span>
+                      <span className="text-red-500 font-bold">*</span>
                     </span>
                   </th>
                   <th className="py-2.5 px-3 w-28 text-center">Amount (Rs)</th>
@@ -427,7 +471,10 @@ export function NewBillPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {items.map((item, index) => {
-                  const tasksCount = item.mazdooriTasks?.length || 0
+                  const isNameInvalid = attemptedSave && !item.itemName.trim()
+                  const isQtyInvalid = attemptedSave && (!item.quantity || item.quantity <= 0)
+                  const isRateInvalid = attemptedSave && (!item.rate || item.rate <= 0)
+                  const isMazdooriInvalid = attemptedSave && (item.mazdoori === undefined || item.mazdoori === null || isNaN(item.mazdoori) || item.mazdoori < 0)
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/50">
@@ -444,7 +491,12 @@ export function NewBillPage() {
                           onKeyDown={(e) => handleCellKeyDown(e, index, 0)}
                           onChange={(e) => updateItem(item.id, { itemName: e.target.value })}
                           placeholder="e.g. Chadar 8x4 / Laser Cut Grill"
-                          className="w-full h-8 px-3 text-sm text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          className={cn(
+                            'w-full h-8 px-3 text-sm rounded-lg bg-white focus:outline-none transition-colors',
+                            isNameInvalid
+                              ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900'
+                              : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                          )}
                         />
                       </td>
 
@@ -452,14 +504,20 @@ export function NewBillPage() {
                       <td className="py-2.5 px-2 text-center">
                         <input
                           type="number"
-                          min="1"
+                          min="0.01"
+                          step="any"
                           value={item.quantity}
                           data-bill-cell={`${index}-1`}
                           onKeyDown={(e) => handleCellKeyDown(e, index, 1)}
                           onChange={(e) =>
-                            updateItem(item.id, { quantity: Math.max(1, Number(e.target.value) || 1) })
+                            updateItem(item.id, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })
                           }
-                          className="w-full h-8 text-center text-sm text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          className={cn(
+                            'w-full h-8 text-center text-sm rounded-lg bg-white focus:outline-none transition-colors',
+                            isQtyInvalid
+                              ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
+                              : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                          )}
                         />
                       </td>
 
@@ -468,6 +526,7 @@ export function NewBillPage() {
                         <input
                           type="number"
                           min="0"
+                          step="any"
                           value={item.rate || ''}
                           placeholder="0"
                           data-bill-cell={`${index}-2`}
@@ -475,51 +534,38 @@ export function NewBillPage() {
                           onChange={(e) =>
                             updateItem(item.id, { rate: Math.max(0, Number(e.target.value) || 0) })
                           }
-                          className="w-full h-8 text-center text-sm text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          className={cn(
+                            'w-full h-8 text-center text-sm rounded-lg bg-white focus:outline-none transition-colors',
+                            isRateInvalid
+                              ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
+                              : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                          )}
                         />
                       </td>
 
                       {/* Mazdoori Field */}
                       <td className="py-2.5 px-2 text-center">
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="number"
-                            min="0"
-                            value={item.mazdoori || ''}
-                            placeholder="0"
-                            data-bill-cell={`${index}-3`}
-                            onKeyDown={(e) => handleCellKeyDown(e, index, 3)}
-                            onChange={(e) => {
-                              const val = Math.max(0, Number(e.target.value) || 0)
-                              updateItem(item.id, { mazdoori: val })
-                            }}
-                            className={cn(
-                              'w-full h-8 text-center text-sm font-semibold border rounded-lg bg-white focus:outline-none focus:ring-1 transition-colors',
-                              item.mazdoori > 0
-                                ? 'text-purple-700 border-purple-300 bg-purple-50/30 focus:border-purple-500 focus:ring-purple-500'
-                                : 'text-slate-900 border-slate-200 focus:border-blue-500 focus:ring-blue-500'
-                            )}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setActiveMazdooriItemId(item.id)}
-                            className={cn(
-                              'h-8 px-2 rounded-lg border text-xs font-semibold flex items-center gap-1 transition-all shrink-0 cursor-pointer',
-                              tasksCount > 0
-                                ? 'bg-purple-100 border-purple-300 text-purple-700 hover:bg-purple-200'
-                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200'
-                            )}
-                            title="Add multiple partner / labor worker tasks"
-                          >
-                            <HardHat className="w-3.5 h-3.5 stroke-[2.2]" />
-                            <span>{tasksCount > 0 ? tasksCount : '+'}</span>
-                          </button>
-                        </div>
-                        {tasksCount > 0 && (
-                          <div className="text-[10px] text-purple-600 truncate mt-0.5 text-left px-1">
-                            {item.mazdooriTasks?.map((t) => t.title).filter(Boolean).join(', ')}
-                          </div>
-                        )}
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={item.mazdoori === 0 ? '0' : item.mazdoori || ''}
+                          placeholder="0"
+                          data-bill-cell={`${index}-3`}
+                          onKeyDown={(e) => handleCellKeyDown(e, index, 3)}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? 0 : Math.max(0, Number(e.target.value) || 0)
+                            updateItem(item.id, { mazdoori: val })
+                          }}
+                          className={cn(
+                            'w-full h-8 text-center text-sm font-semibold border rounded-lg bg-white focus:outline-none focus:ring-1 transition-colors',
+                            isMazdooriInvalid
+                              ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900'
+                              : item.mazdoori > 0
+                              ? 'text-purple-700 border-purple-300 bg-purple-50/30 focus:border-purple-500 focus:ring-purple-500'
+                              : 'text-slate-900 border-slate-200 focus:border-blue-500 focus:ring-blue-500'
+                          )}
+                        />
                       </td>
 
                       {/* Row Total Amount */}
@@ -554,28 +600,11 @@ export function NewBillPage() {
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>Add Another Item</span>
           </button>
-          <p className="text-[11px] text-slate-400 text-center">
-            Shortcuts: <b>Enter</b> next field / new line · <b>Ctrl+S</b> save bill · <b>F2</b> new bill
-          </p>
-        </div>
-
-        {/* Notes (Optional) */}
-        <div className="mt-auto pt-5">
-          <div className="flex items-center gap-2.5 px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl">
-            <FileText className="w-4 h-4 text-slate-600 shrink-0 stroke-[2]" />
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notes (Optional) - e.g. delivery date, balance details, metal gauge, etc."
-              className="w-full text-xs text-slate-700 bg-transparent placeholder:text-slate-400 focus:outline-none"
-            />
-          </div>
         </div>
       </div>
 
-      {/* Right Column: Bill Summary (4 cols) */}
-      <div className="col-span-12 xl:col-span-4 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
+      {/* Right Column: Bill Summary */}
+      <div className="w-[360px] xl:w-[400px] shrink-0 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
         <div className="space-y-4">
           <h2 className="text-[20px] font-bold text-slate-900">Bill Summary</h2>
 
@@ -604,21 +633,6 @@ export function NewBillPage() {
                 </span>
               </div>
             )}
-
-            {/* Discount field */}
-            <div className="flex justify-between items-center text-slate-700">
-              <span>Discount</span>
-              <div className="w-28">
-                <input
-                  type="number"
-                  min="0"
-                  value={discount || ''}
-                  placeholder="0"
-                  onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-full h-8 px-2.5 text-right font-medium text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-            </div>
 
             <div className="flex justify-between items-center text-slate-900 pt-1 border-t border-slate-100">
               <span className="font-bold">Total Amount</span>
@@ -668,11 +682,10 @@ export function NewBillPage() {
                 type="button"
                 onClick={() => setPaymentMethod(PAYMENT_METHODS.CASH)}
                 disabled={!!editingSale}
-                className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${
-                  paymentMethod === PAYMENT_METHODS.CASH
-                    ? 'bg-[#E8F8F0] border-emerald-400 text-[#065F46] shadow-2xs'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
+                className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${paymentMethod === PAYMENT_METHODS.CASH
+                  ? 'bg-[#E8F8F0] border-emerald-400 text-[#065F46] shadow-2xs'
+                  : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                  }`}
               >
                 <div className="w-5 h-5 rounded-sm bg-emerald-700 text-white flex items-center justify-center">
                   <span className="text-[10px] font-extrabold leading-none">&#9670;</span>
@@ -684,11 +697,10 @@ export function NewBillPage() {
                 type="button"
                 onClick={() => setPaymentMethod(PAYMENT_METHODS.BANK)}
                 disabled={!!editingSale}
-                className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${
-                  paymentMethod === PAYMENT_METHODS.BANK
-                    ? 'bg-[#EAF2FD] border-blue-400 text-blue-700 shadow-2xs'
-                    : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
-                }`}
+                className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${paymentMethod === PAYMENT_METHODS.BANK
+                  ? 'bg-[#EAF2FD] border-blue-400 text-blue-700 shadow-2xs'
+                  : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
+                  }`}
               >
                 <Landmark className="w-4 h-4 stroke-[2.2] text-slate-700" />
                 <span>Bank</span>

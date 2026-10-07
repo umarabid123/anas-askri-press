@@ -111,15 +111,47 @@ export async function getCustomerLedger(customerId: string): Promise<CustomerLed
   if (isTauri()) return invoke('get_customer_ledger', { customerId })
   return readBrowser().customer_ledger.filter(r => r.customer_id === customerId).map(fromRow<CustomerLedgerEntry>)
 }
-export async function receivePayment(payment: { customerId: string; amount: number; paymentMethod: string; notes?: string }): Promise<string> {
-  payment = { ...payment, amount: roundMoney(payment.amount) }; assertAmount(payment.amount, 'Payment'); if (!['cash', 'bank'].includes(payment.paymentMethod)) throw new Error('Choose cash or bank.')
+export interface ReceivePaymentInput {
+  customerId?: string | null
+  saleId?: string | null
+  amount: number
+  paymentMethod: string
+  notes?: string
+}
+
+export async function receivePayment(payment: ReceivePaymentInput): Promise<string> {
+  payment = { ...payment, amount: roundMoney(payment.amount) }
+  assertAmount(payment.amount, 'Payment')
+  if (!['cash', 'bank'].includes(payment.paymentMethod)) throw new Error('Choose cash or bank.')
   if (isTauri()) return invoke('receive_payment', { payment })
   return transaction(t => {
-    const customer = found(t, 'customers', payment.customerId)
-    if (payment.amount > Number(customer.balance)) throw new Error('Payment cannot exceed the outstanding balance.')
-    customer.total_paid = roundMoney(Number(customer.total_paid) + payment.amount); customer.balance = roundMoney(Number(customer.balance) - payment.amount); touch(customer)
-    const receipt = stamp({ id: crypto.randomUUID(), ...payment, saleId: null, paymentDate: now() }); t.payments.push(toRow(receipt))
-    t.customer_ledger.push(toRow(stamp({ id: crypto.randomUUID(), customerId: payment.customerId, date: receipt.createdAt, description: 'Payment Received (' + payment.paymentMethod.toUpperCase() + ')' + (payment.notes ? ' - ' + payment.notes : ''), debit: 0, credit: payment.amount, balance: customer.balance })))
+    let customerId = payment.customerId || null
+    if (payment.saleId) {
+      const sale = t.sales.find(s => s.id === payment.saleId)
+      if (!sale) throw new Error('Bill not found.')
+      if (payment.amount > Number(sale.remaining_credit) + 0.01) {
+        throw new Error('Payment cannot exceed bill remaining credit.')
+      }
+      sale.paid_amount = roundMoney(Number(sale.paid_amount) + payment.amount)
+      sale.remaining_credit = roundMoney(Math.max(0, Number(sale.remaining_credit) - payment.amount))
+      touch(sale)
+      if (!customerId && sale.customer_id) customerId = String(sale.customer_id)
+    }
+    let balance = 0
+    if (customerId) {
+      const customer = t.customers.find(c => c.id === customerId)
+      if (customer) {
+        customer.total_paid = roundMoney(Number(customer.total_paid) + payment.amount)
+        customer.balance = roundMoney(Number(customer.balance) - payment.amount)
+        touch(customer)
+        balance = customer.balance
+      }
+    }
+    const receipt = stamp({ id: crypto.randomUUID(), ...payment, customerId, saleId: payment.saleId || null, paymentDate: now() })
+    t.payments.push(toRow(receipt))
+    if (customerId) {
+      t.customer_ledger.push(toRow(stamp({ id: crypto.randomUUID(), customerId, date: receipt.createdAt, description: 'Payment Received (' + payment.paymentMethod.toUpperCase() + ')' + (payment.notes ? ' - ' + payment.notes : ''), debit: 0, credit: payment.amount, balance })))
+    }
     return receipt.id
   })
 }
@@ -193,24 +225,63 @@ function cancelSaleInTables(t: Tables, saleId: string, reason: string): boolean 
     return true
 }
 
-// A correction retains the original bill and all receipt/worker history.
-// Both reversal and replacement are committed together, or neither is saved.
+// Update bill in-place without creating a replacement bill or extra insertion
 export async function updateSale(saleId: string, input: CreateSaleInput): Promise<string> {
   const bill = prepareBill(input.items, input.discount, input.paidAmount)
   if (isTauri()) return invoke('update_sale', { saleId, sale: { ...input, ...bill } })
   return transaction(t => {
-    const original = found(t, 'sales', saleId)
-    if (original.cancelled_at) throw new Error('This bill is no longer active. Open the latest bill to edit it.')
-    if ((input.customerId || null) !== (original.customer_id || null)) throw new Error('Keep the same customer when editing a bill.')
-    if (bill.paidAmount !== Number(original.paid_amount) || input.paymentMethod !== original.payment_method) throw new Error('Keep the payment already received. Add any new payment from Customers.')
-    const invoiceNumber = createSaleInTables(t, { ...input, id: undefined, invoiceNumber: undefined, notes: ['Updated from bill #' + original.invoice_number, input.notes].filter(Boolean).join('\n') })
-    const replacement = t.sales.find(s => s.invoice_number === invoiceNumber)!
-    replacement.created_at = original.created_at
-    const oldPayment = t.payments.find(p => p.sale_id === saleId)
-    const newPayment = t.payments.find(p => p.sale_id === replacement.id)
-    if (oldPayment && newPayment) { newPayment.payment_date = oldPayment.payment_date; newPayment.created_at = oldPayment.created_at }
-    cancelSaleInTables(t, saleId, 'Updated: use bill #' + invoiceNumber)
-    return invoiceNumber
+    const sale = found(t, 'sales', saleId)
+    sale.customer_id = input.customerId || null
+    sale.customer_name = input.customerName || null
+    sale.customer_mobile = input.customerMobile || null
+    sale.subtotal = bill.subtotal
+    sale.discount = bill.discount
+    sale.total_mazdoori = bill.totalMazdoori
+    sale.total = bill.total
+    sale.paid_amount = bill.paidAmount
+    sale.remaining_credit = bill.remainingCredit
+    sale.payment_method = input.paymentMethod
+    sale.notes = input.notes || null
+    sale.cancelled_at = null
+    sale.cancel_reason = null
+    touch(sale)
+
+    t.sale_items = t.sale_items.filter(i => i.sale_id !== saleId)
+    for (const item of bill.items) {
+      t.sale_items.push(toRow(stamp({
+        id: crypto.randomUUID(),
+        saleId,
+        itemId: item.itemId || null,
+        itemName: item.itemName,
+        quantity: item.quantity,
+        rate: item.rate,
+        mazdoori: item.mazdoori,
+        amount: item.amount,
+      })))
+    }
+
+    const payment = t.payments.find(p => p.sale_id === saleId)
+    if (bill.paidAmount > 0) {
+      if (payment) {
+        payment.amount = bill.paidAmount
+        payment.payment_method = input.paymentMethod
+        touch(payment)
+      } else {
+        t.payments.push(toRow(stamp({
+          id: crypto.randomUUID(),
+          customerId: input.customerId || null,
+          saleId,
+          amount: bill.paidAmount,
+          paymentMethod: input.paymentMethod,
+          paymentDate: sale.created_at,
+          notes: 'Payment for invoice ' + sale.invoice_number,
+        })))
+      }
+    } else if (payment) {
+      t.payments = t.payments.filter(p => p.sale_id !== saleId)
+    }
+
+    return String(sale.invoice_number)
   })
 }
 export interface ExpenseInput { expenseDate: string; category: string; description?: string; amount: number; paymentMethod: string }

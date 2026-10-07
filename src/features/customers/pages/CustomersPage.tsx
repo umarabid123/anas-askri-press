@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  ChevronLeft,
+  ChevronRight,
   DollarSign,
   Eye,
   FilePlus,
@@ -21,6 +23,8 @@ import { EditCustomerModal } from '../components/EditCustomerModal'
 import { ReceivePaymentModal } from '../components/ReceivePaymentModal'
 import type { Customer } from '@/types'
 
+const PAGE_SIZE = 10
+
 export function CustomersPage() {
   const navigate = useNavigate()
   const {
@@ -35,6 +39,12 @@ export function CustomersPage() {
   const setCustomerInCart = useCartStore((s) => s.setCustomer)
 
   const [searchTerm, setSearchTerm] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+
+  // Reset pagination on search change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchTerm])
 
   // Modal states
   const [isAddOpen, setIsAddOpen] = useState(false)
@@ -43,12 +53,23 @@ export function CustomersPage() {
   const [deletingCustomer, setDeletingCustomer] = useState<Customer | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.mobile.includes(searchTerm) ||
-      (c.address && c.address.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
+  const filteredCustomers = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim()
+    if (!q) return customers
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.mobile.includes(q) ||
+        (c.address && c.address.toLowerCase().includes(q))
+    )
+  }, [customers, searchTerm])
+
+  const totalPages = Math.max(1, Math.ceil(filteredCustomers.length / PAGE_SIZE))
+  const validPage = Math.min(currentPage, totalPages)
+  const paginatedCustomers = useMemo(() => {
+    const start = (validPage - 1) * PAGE_SIZE
+    return filteredCustomers.slice(start, start + PAGE_SIZE)
+  }, [filteredCustomers, validPage])
 
   const totalCustomers = customers.length
   const totalPurchase = customers.reduce((s, c) => s + (c.totalPurchase || 0), 0)
@@ -145,10 +166,10 @@ export function CustomersPage() {
                       </td>
                     </tr>
                   ) : (
-                    filteredCustomers.map((customer, index) => (
+                    paginatedCustomers.map((customer, index) => (
                       <tr key={customer.id} className="hover:bg-slate-50/50">
                         <td className="py-3 px-3 text-center text-xs font-medium text-slate-500">
-                          {index + 1}
+                          {(validPage - 1) * PAGE_SIZE + index + 1}
                         </td>
                         <td className="py-3 px-4">
                           <button
@@ -231,6 +252,81 @@ export function CustomersPage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls Footer (10 records per page) */}
+          {filteredCustomers.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50/60">
+              <p className="text-xs text-slate-500 font-medium">
+                Showing{' '}
+                <span className="font-bold text-slate-800">
+                  {(validPage - 1) * PAGE_SIZE + 1}
+                </span>{' '}
+                to{' '}
+                <span className="font-bold text-slate-800">
+                  {Math.min(validPage * PAGE_SIZE, filteredCustomers.length)}
+                </span>{' '}
+                of{' '}
+                <span className="font-bold text-slate-800">
+                  {filteredCustomers.length}
+                </span>{' '}
+                customers
+              </p>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={validPage <= 1}
+                  className="h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span>Previous</span>
+                </button>
+
+                {/* Page indicator pills */}
+                <div className="flex items-center gap-1 px-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalPages ||
+                        Math.abs(p - validPage) <= 1
+                    )
+                    .map((pageNum, idx, arr) => {
+                      const prev = arr[idx - 1]
+                      return (
+                        <div key={pageNum} className="flex items-center">
+                          {prev && pageNum - prev > 1 && (
+                            <span className="px-1 text-slate-400 text-xs">…</span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setCurrentPage(pageNum)}
+                            className={`w-7 h-7 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                              validPage === pageNum
+                                ? 'bg-[#1877F2] text-white shadow-2xs'
+                                : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        </div>
+                      )
+                    })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={validPage >= totalPages}
+                  className="h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-semibold text-slate-700 flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <span>Next</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
         </div>

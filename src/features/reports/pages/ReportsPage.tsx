@@ -108,10 +108,11 @@ export function ReportsPage() {
 
   const displayedDaily = dailyReportData.filter((d) => d.date.includes(searchTerm))
 
+  const PAGE_SIZE = 10
   const rowCount = activeTab === 'sales' ? displayedSales.length : activeTab === 'customer' ? displayedCustomers.length : activeTab === 'mazdoori' ? displayedWorkers.length : displayedDaily.length
-  const maxPage = Math.max(1, Math.ceil(rowCount / 50))
+  const maxPage = Math.max(1, Math.ceil(rowCount / PAGE_SIZE))
   const currentPage = Math.min(page, maxPage)
-  const paged = <T,>(rows: T[]) => printing ? rows : rows.slice((currentPage - 1) * 50, currentPage * 50)
+  const paged = <T,>(rows: T[]) => printing ? rows : rows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
   return (
     <div id="financial-report-print" className="space-y-4">
       {error && <div role="alert" className="p-3 bg-red-50 text-red-700">{error}</div>}

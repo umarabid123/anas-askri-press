@@ -5,22 +5,35 @@ export function prepareBill(items: SaleItem[], discount: number, paidAmount: num
   if (![discount, paidAmount].every(Number.isFinite) || discount < 0 || paidAmount < 0) {
     throw new Error('Enter zero or a positive amount for discount and payment.')
   }
-  const normalized = items.filter(item => item.itemName.trim() || item.rate || item.mazdoori || item.mazdooriTasks?.length).map(item => {
-    if (!item.itemName.trim()) throw new Error('Enter a description for every item with an amount.')
-    if (![item.quantity, item.rate, item.mazdoori].every(Number.isFinite) || item.quantity <= 0 || item.rate < 0 || item.mazdoori < 0) {
-      throw new Error('Quantity must be more than zero. Rate and mazdoori cannot be below zero.')
+  if (!items.length) throw new Error('Please add at least one item.')
+
+  const normalized = items.map((item, index) => {
+    const rowNum = index + 1
+    if (!item.itemName || !item.itemName.trim()) {
+      throw new Error(`Row #${rowNum}: Item / Description is required.`)
     }
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+      throw new Error(`Row #${rowNum} ("${item.itemName.trim()}"): Qty/Kg is required and must be greater than 0.`)
+    }
+    if (!Number.isFinite(item.rate) || item.rate <= 0) {
+      throw new Error(`Row #${rowNum} ("${item.itemName.trim()}"): Rate (Rs) is required and must be greater than 0.`)
+    }
+    if (!Number.isFinite(item.mazdoori) || item.mazdoori < 0) {
+      throw new Error(`Row #${rowNum} ("${item.itemName.trim()}"): Mazdoori (Rs) is required (enter 0 if no labour).`)
+    }
+
     const tasks = (item.mazdooriTasks || []).map(task => {
-      if (!task.title.trim() || !Number.isFinite(task.amount) || task.amount <= 0) throw new Error('Add a work name and an amount above zero for each mazdoori entry.')
+      if (!task.title.trim() || !Number.isFinite(task.amount) || task.amount <= 0) {
+        throw new Error(`Row #${rowNum}: Add a work name and an amount above zero for each mazdoori entry.`)
+      }
       return { ...task, workerName: (task.workerName || task.mazdoorName || '').trim(), amount: roundMoney(task.amount) }
     })
     if (tasks.length && Math.abs(tasks.reduce((sum, task) => sum + task.amount, 0) - item.mazdoori) > 0.01) {
-      throw new Error('Total mazdoori must match the amounts added for the workers.')
+      throw new Error(`Row #${rowNum}: Total mazdoori must match the amounts added for workers.`)
     }
     const rate = roundMoney(item.rate), mazdoori = roundMoney(item.mazdoori)
     return { ...item, rate, mazdoori, itemName: item.itemName.trim(), mazdooriTasks: tasks, amount: calculateItemAmount(item.quantity, rate, mazdoori) }
   })
-  if (!normalized.length) throw new Error('Add at least one item before saving.')
   const subtotal = roundMoney(normalized.reduce((sum, item) => sum + item.amount - item.mazdoori, 0))
   const totalMazdoori = roundMoney(normalized.reduce((sum, item) => sum + item.mazdoori, 0))
   const gross = roundMoney(normalized.reduce((sum, item) => sum + item.amount, 0))

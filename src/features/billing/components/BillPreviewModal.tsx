@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { saveFile, openWhatsApp } from '@/services/files.service'
 import { printDocument } from '@/utils/printing'
 import { toBlob } from 'html-to-image'
-import { Ban, Download, MessageCircle, Printer, X, Loader2, Pencil, Plus } from 'lucide-react'
+import { Ban, Download, MessageCircle, Printer, X, Loader2, Pencil, Plus, DollarSign } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ROUTES } from '@/constants/routes'
 import { useCartStore } from '@/stores/cart.store'
@@ -12,8 +12,9 @@ import { confirmLeaveDraft, startNewBill } from '../bill-actions'
 import { Button } from '@/components/ui/Button'
 import { ShopInvoiceTemplate, type ShopInvoiceData } from './ShopInvoiceTemplate'
 import { CancelInvoiceDialog } from './CancelInvoiceDialog'
-import { getBusinessSettings, getSales, getCustomerById } from '@/services/sqlite.service'
-import type { BusinessSettings } from '@/types'
+import { ReceivePaymentModal } from '@/features/customers/components/ReceivePaymentModal'
+import { getBusinessSettings, getSales, getCustomerById, receivePayment } from '@/services/sqlite.service'
+import type { BusinessSettings, Customer } from '@/types'
 
 interface BillPreviewModalProps {
   isOpen: boolean
@@ -43,6 +44,44 @@ export function BillPreviewModal({
   const [settings, setSettings] = useState<BusinessSettings | null>(null)
   const [isCancelOpen, setIsCancelOpen] = useState(false)
   const [isOpeningEdit, setIsOpeningEdit] = useState(false)
+  const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false)
+  const [receivePaymentCustomer, setReceivePaymentCustomer] = useState<Customer | null>(null)
+
+  const handleOpenReceivePayment = async () => {
+    if (!data) return
+    let cust: Customer | null = data.customer || null
+    if (!cust) {
+      try {
+        const sales = await getSales()
+        const sale = sales.find((s) => s.id === data.saleId || s.invoiceNumber === data.invoiceNumber)
+        if (sale?.customerId) {
+          cust = await getCustomerById(sale.customerId)
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    if (!cust && data.customerName) {
+      cust = {
+        id: data.customer?.id || '',
+        name: data.customerName,
+        mobile: data.customerPhone || '',
+        address: data.customerAddress || '',
+        totalPurchase: data.total,
+        totalPaid: data.paidAmount,
+        balance: data.remainingCredit || 0,
+        createdAt: data.date,
+        updatedAt: data.date,
+        syncStatus: 'synced',
+      }
+    }
+    if (!cust || !cust.id) {
+      toast.error('No customer record attached to this bill.')
+      return
+    }
+    setReceivePaymentCustomer(cust)
+    setIsReceivePaymentOpen(true)
+  }
 
   const handleNewBill = () => {
     if (!startNewBill()) return
@@ -242,10 +281,32 @@ export function BillPreviewModal({
             WhatsApp shares the invoice image only. Paste it in the chat with Ctrl+V, then Send.
           </p>
           <div className="flex flex-wrap items-center gap-3">
+            {(() => {
+              const isPaid = (data.remainingCredit || 0) <= 0 || !!data.cancelledAt
+              return (
+                <Button
+                  disabled={isPaid}
+                  onClick={handleOpenReceivePayment}
+                  className={isPaid
+                    ? 'bg-slate-100 border border-slate-200 text-slate-400 cursor-not-allowed opacity-60 flex items-center gap-1.5 font-semibold'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 font-semibold shadow-xs'
+                  }
+                  title={isPaid ? 'Bill is fully paid' : 'Receive Payment'}
+                >
+                  <DollarSign className="w-4 h-4 stroke-[2.2]" />
+                  <span>Receive Payment</span>
+                </Button>
+              )
+            })()}
             {!data.cancelledAt && (
-              <Button variant="outline" onClick={() => handleEditBill()} disabled={isOpeningEdit} className="flex items-center gap-1.5">
-                <Pencil className="w-4 h-4" />
-                {isOpeningEdit ? 'Opening...' : 'Edit Bill'}
+              <Button
+                variant="outline"
+                onClick={() => handleEditBill()}
+                disabled={isOpeningEdit}
+                className="flex items-center gap-1.5 bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 font-semibold"
+              >
+                <Pencil className="w-4 h-4 text-blue-600" />
+                {isOpeningEdit ? 'Opening...' : 'Update Bill'}
               </Button>
             )}
             {data.cancelledAt && (
@@ -284,6 +345,40 @@ export function BillPreviewModal({
           onCancelled={() => { setIsCancelOpen(false); onCancelled?.(); onClose() }}
         />
       )}
+
+      {/* Receive Payment Modal */}
+      <ReceivePaymentModal
+        isOpen={isReceivePaymentOpen}
+        customer={receivePaymentCustomer}
+        billInfo={
+          data
+            ? {
+                saleId: data.saleId || '',
+                invoiceNumber: data.invoiceNumber,
+                total: data.total,
+                remainingCredit: data.remainingCredit || 0,
+              }
+            : null
+        }
+        defaultAmount={data.remainingCredit || 0}
+        defaultNotes={`Payment for Bill #${data.invoiceNumber}`}
+        onClose={() => {
+          setIsReceivePaymentOpen(false)
+          setReceivePaymentCustomer(null)
+        }}
+        onSubmit={async (payment) => {
+          const receiptId = await receivePayment({
+            ...payment,
+            saleId: data.saleId || null,
+          })
+          toast.success(`Payment of Rs ${payment.amount.toLocaleString()} received for Bill #${data.invoiceNumber}!`)
+          setIsReceivePaymentOpen(false)
+          setReceivePaymentCustomer(null)
+          onCancelled?.()
+          onClose()
+          return receiptId
+        }}
+      />
     </div>, document.body
   )
 }

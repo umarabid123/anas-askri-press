@@ -5,6 +5,7 @@ import { PageLayout } from '@/components/layout/PageLayout'
 import { ROUTES } from '@/constants/routes'
 const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const NewBillPage = lazy(() => import('@/features/billing/pages/NewBillPage').then(module => ({ default: module.NewBillPage })))
+const UpdateBillPage = lazy(() => import('@/features/billing/pages/UpdateBillPage').then(module => ({ default: module.UpdateBillPage })))
 const CustomersPage = lazy(() => import('@/features/customers/pages/CustomersPage').then(module => ({ default: module.CustomersPage })))
 const CustomerDetailPage = lazy(() => import('@/features/customers/pages/CustomerDetailPage').then(module => ({ default: module.CustomerDetailPage })))
 const MazdooriPage = lazy(() => import('@/features/mazdoori/pages/MazdooriPage').then(module => ({ default: module.MazdooriPage })))
@@ -19,6 +20,7 @@ export function AppRouter() {
           <Route path="/" element={<PageLayout />}>
             <Route index element={<DashboardPage />} />
             <Route path={ROUTES.NEW_BILL} element={<NewBillPage />} />
+            <Route path={ROUTES.BILLS} element={<UpdateBillPage />} />
             <Route path={ROUTES.CUSTOMERS} element={<CustomersPage />} />
             <Route path={ROUTES.CUSTOMER_DETAIL} element={<CustomerDetailPage />} />
             <Route path={ROUTES.MAZDOORI} element={<MazdooriPage />} />

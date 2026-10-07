@@ -18,8 +18,5 @@ export function startNewBill(customer?: Customer): boolean {
 export function editBlockReason(saleId: string, sales: Sale[]): string | null {
   const sale = sales.find(sale => sale.id === saleId)
   if (!sale) return 'This bill was not found. It cannot be updated.'
-  if (sale.cancelledAt) return sale.cancelReason?.startsWith('Updated:')
-    ? 'This is an old bill. It has already been replaced and cannot be edited.'
-    : 'This bill was cancelled. It cannot be edited.'
   return null
 }

@@ -95,7 +95,7 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top receivables */}
-        <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
+        {/* <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
           <h2 className="text-base font-bold text-slate-900 mb-3">Highest Balances</h2>
           {debtors.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-400">No customer owes anything.</p>
@@ -121,7 +121,7 @@ export function DashboardPage() {
               ))}
             </ul>
           )}
-        </div>
+        </div> */}
 
         {/* Recent invoices */}
         <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">

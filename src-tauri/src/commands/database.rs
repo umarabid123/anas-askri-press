@@ -152,8 +152,10 @@ pub struct CustomerLedgerEntryDto {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReceivePaymentDto {
-    #[serde(rename = "customerId")]
-    pub customer_id: String,
+    #[serde(rename = "customerId", default)]
+    pub customer_id: Option<String>,
+    #[serde(rename = "saleId", default)]
+    pub sale_id: Option<String>,
     pub amount: f64,
     #[serde(rename = "paymentMethod")]
     pub payment_method: String,
@@ -802,7 +804,7 @@ pub fn get_customer_ledger(customer_id: String, state: State<DbState>) -> Result
 
 #[tauri::command]
 pub fn receive_payment(mut payment: ReceivePaymentDto, state: State<DbState>) -> Result<String, String> {
-    payment.amount = (payment.amount*100.0).round()/100.0;
+    payment.amount = (payment.amount * 100.0).round() / 100.0;
     if !payment.amount.is_finite() || payment.amount <= 0.0 {
         return Err("Payment amount must be greater than zero".to_string());
     }
@@ -810,61 +812,143 @@ pub fn receive_payment(mut payment: ReceivePaymentDto, state: State<DbState>) ->
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    if !["cash", "bank"].contains(&payment.payment_method.as_str()) { return Err("Choose cash or bank".into()); }
-    let current_balance: f64 = tx.query_row(
-        "SELECT balance FROM customers WHERE id = ?1",
-        params![payment.customer_id],
-        |row| row.get(0),
-    ).map_err(|_| "Customer not found".to_string())?;
+    if !["cash", "bank"].contains(&payment.payment_method.as_str()) {
+        return Err("Choose cash or bank".into());
+    }
 
-    if payment.amount > current_balance { return Err("Payment cannot exceed outstanding balance".into()); }
-    let new_balance = ((current_balance - payment.amount)*100.0).round()/100.0;
+    let mut sale_invoice_num = String::new();
+    let mut sale_customer_id: Option<String> = None;
 
-    tx.execute(
-        "UPDATE customers
-         SET total_paid = total_paid + ?1,
-             balance = ?2,
-             updated_at = datetime('now'),
-             sync_status = 'pending'
-         WHERE id = ?3",
-        params![payment.amount, new_balance, payment.customer_id],
-    ).map_err(|e| e.to_string())?;
+    // 1. If payment is for a specific bill, update the sale record
+    if let Some(ref s_id) = payment.sale_id {
+        if !s_id.trim().is_empty() {
+            let (inv_num, cust_id, paid_amt, remaining_credit): (String, Option<String>, f64, f64) = tx.query_row(
+                "SELECT invoice_number, customer_id, paid_amount, remaining_credit FROM sales WHERE id = ?1",
+                params![s_id.trim()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            ).optional().map_err(|e| e.to_string())?.ok_or_else(|| "Bill not found".to_string())?;
 
+            if payment.amount > remaining_credit + 0.01 {
+                return Err(format!(
+                    "Payment amount (Rs {}) cannot exceed bill remaining credit (Rs {})",
+                    payment.amount, remaining_credit
+                ));
+            }
+
+            let new_sale_paid = ((paid_amt + payment.amount) * 100.0).round() / 100.0;
+            let new_sale_credit = ((remaining_credit - payment.amount).max(0.0) * 100.0).round() / 100.0;
+
+            tx.execute(
+                "UPDATE sales
+                 SET paid_amount = ?1,
+                     remaining_credit = ?2,
+                     updated_at = datetime('now'),
+                     sync_status = 'pending'
+                 WHERE id = ?3",
+                params![new_sale_paid, new_sale_credit, s_id.trim()],
+            ).map_err(|e| e.to_string())?;
+
+            let q_sale = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+                 VALUES (?1, 'sale', ?2, 'UPDATE', '{}', 'pending')",
+                params![q_sale, s_id.trim()],
+            ).map_err(|e| e.to_string())?;
+
+            sale_invoice_num = inv_num;
+            sale_customer_id = cust_id;
+        }
+    }
+
+    // 2. Determine target customer
+    let target_customer_id: Option<String> = payment.customer_id
+        .filter(|id| !id.trim().is_empty())
+        .or(sale_customer_id);
+
+    let mut new_balance = 0.0;
+    if let Some(ref c_id) = target_customer_id {
+        let cust_bal: Option<f64> = tx.query_row(
+            "SELECT balance FROM customers WHERE id = ?1",
+            params![c_id],
+            |row| row.get(0),
+        ).optional().map_err(|e| e.to_string())?;
+
+        if let Some(current_balance) = cust_bal {
+            // Only cap at total balance if general payment (not bill-specific)
+            if payment.sale_id.as_ref().map_or(true, |s| s.trim().is_empty()) && payment.amount > current_balance + 0.01 {
+                return Err("Payment cannot exceed outstanding balance".into());
+            }
+
+            new_balance = ((current_balance - payment.amount) * 100.0).round() / 100.0;
+
+            tx.execute(
+                "UPDATE customers
+                 SET total_paid = total_paid + ?1,
+                     balance = ?2,
+                     updated_at = datetime('now'),
+                     sync_status = 'pending'
+                 WHERE id = ?3",
+                params![payment.amount, new_balance, c_id],
+            ).map_err(|e| e.to_string())?;
+
+            let ledger_id = Uuid::new_v4().to_string();
+            let desc = match &payment.notes {
+                Some(n) if !n.trim().is_empty() => {
+                    format!("Payment Received ({}) - {}", payment.payment_method.to_uppercase(), n)
+                }
+                _ => {
+                    if !sale_invoice_num.is_empty() {
+                        format!("Payment for Bill #{} ({})", sale_invoice_num, payment.payment_method.to_uppercase())
+                    } else {
+                        format!("Payment Received ({})", payment.payment_method.to_uppercase())
+                    }
+                }
+            };
+
+            tx.execute(
+                "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
+                 VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?3, 0.0, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
+                params![
+                    ledger_id,
+                    c_id,
+                    desc,
+                    payment.amount,
+                    new_balance,
+                    payment.sale_id.as_deref().filter(|s| !s.trim().is_empty()),
+                ],
+            ).map_err(|e| e.to_string())?;
+
+            let q_cust = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+                 VALUES (?1, 'customer', ?2, 'UPDATE', '{}', 'pending')",
+                params![q_cust, c_id],
+            ).map_err(|e| e.to_string())?;
+        }
+    } else if payment.sale_id.as_ref().map_or(true, |s| s.trim().is_empty()) {
+        return Err("Customer not found".to_string());
+    }
+
+    // 3. Record payment
     let payment_id = Uuid::new_v4().to_string();
     tx.execute(
         "INSERT INTO payments (id, customer_id, sale_id, amount, payment_method, notes, sync_status)
-         VALUES (?1, ?2, NULL, ?3, ?4, ?5, 'pending')",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending')",
         params![
             payment_id,
-            payment.customer_id,
+            target_customer_id,
+            payment.sale_id.as_deref().filter(|s| !s.trim().is_empty()),
             payment.amount,
             payment.payment_method,
             payment.notes,
         ],
     ).map_err(|e| e.to_string())?;
 
-    let ledger_id = Uuid::new_v4().to_string();
-    let desc = match &payment.notes {
-        Some(n) if !n.trim().is_empty() => format!("Payment Received ({}) - {}", payment.payment_method.to_uppercase(), n),
-        _ => format!("Payment Received ({})", payment.payment_method.to_uppercase()),
-    };
-
-    tx.execute(
-        "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
-         VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?3, 0.0, ?4, ?5, NULL, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
-        params![
-            ledger_id,
-            payment.customer_id,
-            desc,
-            payment.amount,
-            new_balance,
-        ],
-    ).map_err(|e| e.to_string())?;
-
     let q_payment = Uuid::new_v4().to_string();
     let p_payload = serde_json::json!({
         "id": payment_id,
-        "customer_id": payment.customer_id,
+        "customer_id": target_customer_id,
+        "sale_id": payment.sale_id.as_deref().filter(|s| !s.trim().is_empty()),
         "amount": payment.amount,
         "payment_method": payment.payment_method,
         "notes": payment.notes,
@@ -874,13 +958,6 @@ pub fn receive_payment(mut payment: ReceivePaymentDto, state: State<DbState>) ->
         "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
          VALUES (?1, 'payment', ?2, 'INSERT', ?3, 'pending')",
         params![q_payment, payment_id, p_payload],
-    ).map_err(|e| e.to_string())?;
-
-    let q_cust = Uuid::new_v4().to_string();
-    tx.execute(
-        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
-         VALUES (?1, 'customer', ?2, 'UPDATE', '{}', 'pending')",
-        params![q_cust, payment.customer_id],
     ).map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
@@ -1355,23 +1432,330 @@ pub fn update_sale(sale_id: String, sale: CreateSaleDto, state: State<DbState>) 
 }
 
 fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusqlite::Transaction<'_>) -> Result<String, String> {
-    let (old_number, customer_id, paid, method, created_at, cancelled): (String, Option<String>, f64, String, String, Option<String>) = tx.query_row(
-        "SELECT invoice_number, customer_id, paid_amount, payment_method, created_at, cancelled_at FROM sales WHERE id=?1",
-        params![sale_id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)),
-    ).optional().map_err(|e|e.to_string())?.ok_or("Bill not found")?;
-    if cancelled.is_some() { return Err("This bill is no longer active. Open the latest bill to edit it.".into()); }
-    if sale.customer_id.as_deref().filter(|id| !id.is_empty()) != customer_id.as_deref().filter(|id| !id.is_empty()) { return Err("Keep the same customer when editing a bill.".into()); }
-    if !sale.paid_amount.is_finite() || (sale.paid_amount*100.0).round()/100.0 != paid || sale.payment_method != method { return Err("Keep the payment already received. Add any new payment from Customers.".into()); }
-    sale.id = None;
-    sale.invoice_number = None;
-    sale.notes = Some(format!("Updated from bill #{}{}", old_number, sale.notes.as_ref().filter(|n|!n.trim().is_empty()).map(|n|format!("\n{}",n)).unwrap_or_default()));
-    let number = create_sale_in_transaction(sale, &tx)?;
-    let replacement_id: String = tx.query_row("SELECT id FROM sales WHERE invoice_number=?1",params![number],|r|r.get(0)).map_err(|e|e.to_string())?;
-    tx.execute("UPDATE sales SET created_at=?1 WHERE id=?2", params![created_at,replacement_id]).map_err(|e|e.to_string())?;
-    let receipt: Option<(String,String)> = tx.query_row("SELECT payment_date,created_at FROM payments WHERE sale_id=?1 ORDER BY rowid LIMIT 1",params![sale_id],|r|Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e|e.to_string())?;
-    if let Some((date,created)) = receipt { tx.execute("UPDATE payments SET payment_date=?1,created_at=?2 WHERE sale_id=?3",params![date,created,replacement_id]).map_err(|e|e.to_string())?; }
-    cancel_sale_in_transaction(sale_id, Some(format!("Updated: use bill #{}",number)), tx)?;
-    Ok(number)
+    let (old_number, old_customer_id, old_total, old_paid, old_credit): (String, Option<String>, f64, f64, f64) = tx.query_row(
+        "SELECT invoice_number, customer_id, total, paid_amount, remaining_credit FROM sales WHERE id = ?1",
+        params![sale_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+    ).optional().map_err(|e| e.to_string())?.ok_or("Bill not found")?;
+
+    if sale.items.is_empty() || !sale.discount.is_finite() || sale.discount < 0.0 || !sale.paid_amount.is_finite() || sale.paid_amount < 0.0 || !["cash", "bank"].contains(&sale.payment_method.as_str()) {
+        return Err("Invalid bill or payment".into());
+    }
+
+    let mut goods = 0.0;
+    let mut labor = 0.0;
+    let mut gross = 0.0;
+    for item in &mut sale.items {
+        if item.item_name.trim().is_empty() || !item.quantity.is_finite() || item.quantity <= 0.0 || !item.rate.is_finite() || item.rate < 0.0 || !item.mazdoori.is_finite() || item.mazdoori < 0.0 {
+            return Err("Enter valid item descriptions, quantities and amounts".into());
+        }
+        let task_total: f64 = item.mazdoori_tasks.iter().map(|t| t.amount).sum();
+        if item.mazdoori_tasks.iter().any(|t| t.title.trim().is_empty() || !t.amount.is_finite() || t.amount <= 0.0) || (!item.mazdoori_tasks.is_empty() && (task_total - item.mazdoori).abs() > 0.01) {
+            return Err("Invalid labor breakdown".into());
+        }
+        item.item_name = item.item_name.trim().to_string();
+        item.amount = ((item.quantity * item.rate + item.mazdoori) * 100.0).round() / 100.0;
+        goods += item.amount - item.mazdoori;
+        labor += item.mazdoori;
+        gross += item.amount;
+    }
+
+    sale.subtotal = (goods * 100.0).round() / 100.0;
+    sale.total_mazdoori = (labor * 100.0).round() / 100.0;
+    sale.total = ((gross - sale.discount) * 100.0).round() / 100.0;
+    sale.paid_amount = (sale.paid_amount * 100.0).round() / 100.0;
+    if !sale.total.is_finite() || sale.total > 9_999_999_999.99 || sale.total <= 0.0 || sale.paid_amount > sale.total {
+        return Err("Payment cannot exceed a positive bill total".into());
+    }
+    sale.remaining_credit = ((sale.total - sale.paid_amount) * 100.0).round() / 100.0;
+    if sale.remaining_credit > 0.0 && sale.customer_id.as_ref().is_none_or(|id| id.is_empty()) {
+        return Err("Select a customer for a credit bill".into());
+    }
+
+    // 1. Update sales table directly in place (retaining invoice_number and clearing cancelled status)
+    tx.execute(
+        "UPDATE sales
+         SET customer_id = ?1,
+             customer_name = ?2,
+             customer_mobile = ?3,
+             subtotal = ?4,
+             discount = ?5,
+             total_mazdoori = ?6,
+             total = ?7,
+             paid_amount = ?8,
+             remaining_credit = ?9,
+             payment_method = ?10,
+             notes = ?11,
+             cancelled_at = NULL,
+             cancel_reason = NULL,
+             updated_at = datetime('now'),
+             sync_status = 'pending'
+         WHERE id = ?12",
+        params![
+            sale.customer_id,
+            sale.customer_name,
+            sale.customer_mobile,
+            sale.subtotal,
+            sale.discount,
+            sale.total_mazdoori,
+            sale.total,
+            sale.paid_amount,
+            sale.remaining_credit,
+            sale.payment_method,
+            sale.notes,
+            sale_id,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    // 2. Remove old items & tasks for this sale
+    tx.execute(
+        "DELETE FROM sale_item_mazdoori_tasks WHERE sale_item_id IN (SELECT id FROM sale_items WHERE sale_id = ?1)",
+        params![sale_id],
+    ).map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM sale_items WHERE sale_id = ?1",
+        params![sale_id],
+    ).map_err(|e| e.to_string())?;
+
+    // 3. Reverse old worker mazdoori from this sale
+    let mut old_worker_entries: Vec<(String, f64)> = Vec::new();
+    {
+        let mut stmt = tx.prepare("SELECT mazdoor_id, amount FROM mazdoori_entries WHERE notes = ?1 OR notes = ?2").map_err(|e| e.to_string())?;
+        let rows = stmt.query_map(
+            params![format!("Auto-posted from sale {}", sale_id), format!("Auto-posted from sale {}", old_number)],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).map_err(|e| e.to_string())?;
+        for r in rows {
+            if let Ok(entry) = r {
+                old_worker_entries.push(entry);
+            }
+        }
+    }
+    for (w_id, amt) in old_worker_entries {
+        tx.execute(
+            "UPDATE mazdoors SET total_work = ROUND(total_work - ?1, 2), balance = ROUND(balance - ?1, 2), updated_at = datetime('now') WHERE id = ?2",
+            params![amt, w_id],
+        ).map_err(|e| e.to_string())?;
+    }
+    tx.execute(
+        "DELETE FROM mazdoori_entries WHERE notes = ?1 OR notes = ?2",
+        params![format!("Auto-posted from sale {}", sale_id), format!("Auto-posted from sale {}", old_number)],
+    ).map_err(|e| e.to_string())?;
+
+    // 4. Insert updated sale items, tasks, and worker ledger
+    for item in &sale.items {
+        let item_id = Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO sale_items (id, sale_id, item_id, item_name, quantity, rate, mazdoori, amount)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                item_id,
+                sale_id,
+                item.item_id,
+                item.item_name,
+                item.quantity,
+                item.rate,
+                item.mazdoori,
+                item.amount,
+            ],
+        ).map_err(|e| e.to_string())?;
+
+        for task in &item.mazdoori_tasks {
+            let task_id = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO sale_item_mazdoori_tasks (id, sale_item_id, title, amount, worker_name)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![task_id, item_id, task.title, task.amount, task.worker_name],
+            ).map_err(|e| e.to_string())?;
+
+            if let Some(ref w_name) = task.worker_name {
+                let trimmed_worker = w_name.trim();
+                if !trimmed_worker.is_empty() && task.amount > 0.0 {
+                    let worker_id: String = {
+                        let existing: Option<String> = tx.query_row(
+                            "SELECT id FROM mazdoors WHERE name = ?1 COLLATE NOCASE",
+                            params![trimmed_worker],
+                            |r| r.get(0),
+                        ).optional().map_err(|e| e.to_string())?;
+
+                        match existing {
+                            Some(id) => id,
+                            None => {
+                                let new_w_id = Uuid::new_v4().to_string();
+                                tx.execute(
+                                    "INSERT INTO mazdoors (id, name, total_work, total_paid, balance, sync_status)
+                                     VALUES (?1, ?2, 0.0, 0.0, 0.0, 'pending')",
+                                    params![new_w_id, trimmed_worker],
+                                ).map_err(|e| e.to_string())?;
+                                new_w_id
+                            }
+                        }
+                    };
+
+                    let current_w_balance: f64 = tx.query_row(
+                        "SELECT balance FROM mazdoors WHERE id = ?1",
+                        params![worker_id],
+                        |r| r.get(0),
+                    ).map_err(|e| e.to_string())?;
+
+                    let new_w_balance = current_w_balance + task.amount;
+
+                    tx.execute(
+                        "UPDATE mazdoors
+                         SET total_work = total_work + ?1,
+                             balance = ?2,
+                             updated_at = datetime('now'),
+                             sync_status = 'pending'
+                         WHERE id = ?3",
+                        params![task.amount, new_w_balance, worker_id],
+                    ).map_err(|e| e.to_string())?;
+
+                    let entry_id = Uuid::new_v4().to_string();
+                    let work_detail = format!("{} (Invoice #{})", task.title, old_number);
+                    tx.execute(
+                        "INSERT INTO mazdoori_entries (id, mazdoor_id, mazdoor_name, work_date, work_detail, amount, paid_amount, balance, notes, sync_status)
+                         VALUES (?1, ?2, ?3, date('now','localtime'), ?4, ?5, 0.0, ?6, ?7, 'pending')",
+                        params![
+                            entry_id,
+                            worker_id,
+                            trimmed_worker,
+                            work_detail,
+                            task.amount,
+                            new_w_balance,
+                            format!("Auto-posted from sale {}", old_number),
+                        ],
+                    ).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+    }
+
+    // 5. Update Payment
+    let has_payment: bool = tx.query_row(
+        "SELECT COUNT(*) FROM payments WHERE sale_id = ?1",
+        params![sale_id],
+        |r| r.get::<_, i64>(0),
+    ).map(|c| c > 0).unwrap_or(false);
+
+    if sale.paid_amount > 0.0 {
+        if has_payment {
+            tx.execute(
+                "UPDATE payments
+                 SET amount = ?1,
+                     customer_id = ?2,
+                     payment_method = ?3,
+                     notes = ?4,
+                     sync_status = 'pending'
+                 WHERE sale_id = ?5",
+                params![
+                    sale.paid_amount,
+                    sale.customer_id,
+                    sale.payment_method,
+                    format!("Payment for invoice {}", old_number),
+                    sale_id,
+                ],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            let payment_id = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO payments (id, customer_id, sale_id, amount, payment_method, notes, sync_status)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending')",
+                params![
+                    payment_id,
+                    sale.customer_id,
+                    sale_id,
+                    sale.paid_amount,
+                    sale.payment_method,
+                    format!("Payment for invoice {}", old_number),
+                ],
+            ).map_err(|e| e.to_string())?;
+        }
+    } else if has_payment {
+        tx.execute("DELETE FROM payments WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+    }
+
+    // 6. Customer Totals & Ledger
+    let old_cid = old_customer_id.as_deref().filter(|id| !id.is_empty());
+    let new_cid = sale.customer_id.as_deref().filter(|id| !id.is_empty());
+
+    if old_cid != new_cid {
+        if let Some(old_c) = old_cid {
+            tx.execute(
+                "UPDATE customers
+                 SET total_purchase = ROUND(total_purchase - ?1, 2),
+                     total_paid = ROUND(total_paid - ?2, 2),
+                     balance = ROUND(balance - ?3, 2),
+                     updated_at = datetime('now'),
+                     sync_status = 'pending'
+                 WHERE id = ?4",
+                params![old_total, old_paid, old_credit, old_c],
+            ).map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM customer_ledger WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+        }
+        if let Some(new_c) = new_cid {
+            tx.execute(
+                "UPDATE customers
+                 SET total_purchase = ROUND(total_purchase + ?1, 2),
+                     total_paid = ROUND(total_paid + ?2, 2),
+                     balance = ROUND(balance + ?3, 2),
+                     updated_at = datetime('now'),
+                     sync_status = 'pending'
+                 WHERE id = ?4",
+                params![sale.total, sale.paid_amount, sale.remaining_credit, new_c],
+            ).map_err(|e| e.to_string())?;
+            let new_bal: f64 = tx.query_row("SELECT balance FROM customers WHERE id = ?1", params![new_c], |r| r.get(0)).unwrap_or(0.0);
+            let ledger_id = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
+                 VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
+                params![ledger_id, new_c, format!("Invoice #{}", old_number), sale.total, sale.paid_amount, new_bal, sale_id],
+            ).map_err(|e| e.to_string())?;
+        }
+    } else if let Some(cust_id) = new_cid {
+        let delta_purchase = sale.total - old_total;
+        let delta_paid = sale.paid_amount - old_paid;
+        let delta_credit = sale.remaining_credit - old_credit;
+
+        tx.execute(
+            "UPDATE customers
+             SET total_purchase = ROUND(total_purchase + ?1, 2),
+                 total_paid = ROUND(total_paid + ?2, 2),
+                 balance = ROUND(balance + ?3, 2),
+                 updated_at = datetime('now'),
+                 sync_status = 'pending'
+             WHERE id = ?4",
+            params![delta_purchase, delta_paid, delta_credit, cust_id],
+        ).map_err(|e| e.to_string())?;
+
+        let current_bal: f64 = tx.query_row("SELECT balance FROM customers WHERE id = ?1", params![cust_id], |r| r.get(0)).unwrap_or(0.0);
+        let has_ledger: bool = tx.query_row(
+            "SELECT COUNT(*) FROM customer_ledger WHERE sale_id = ?1",
+            params![sale_id],
+            |r| r.get::<_, i64>(0),
+        ).map(|c| c > 0).unwrap_or(false);
+
+        if has_ledger {
+            tx.execute(
+                "UPDATE customer_ledger
+                 SET debit = ?1,
+                     credit = ?2,
+                     balance = ?3,
+                     description = ?4,
+                     sync_status = 'pending'
+                 WHERE sale_id = ?5",
+                params![sale.total, sale.paid_amount, current_bal, format!("Invoice #{}", old_number), sale_id],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            let ledger_id = Uuid::new_v4().to_string();
+            tx.execute(
+                "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
+                 VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
+                params![ledger_id, cust_id, format!("Invoice #{}", old_number), sale.total, sale.paid_amount, current_bal, sale_id],
+            ).map_err(|e| e.to_string())?;
+        }
+    }
+
+    Ok(old_number)
 }
 
 fn cancel_sale_in_transaction(sale_id: &str, reason: Option<String>, tx: &rusqlite::Transaction<'_>) -> Result<bool, String> {
@@ -1476,41 +1860,37 @@ mod invoice_edit_tests {
     }
 
     #[test]
-    fn edit_retains_original_and_receipt_date_and_recalculates_dues() {
+    fn edit_updates_bill_in_place_and_recalculates_dues() {
         let mut conn = setup();
         let id = save_original(&mut conn);
-        conn.execute("UPDATE sales SET created_at='2025-01-02T09:00:00Z' WHERE id=?1",params![id]).unwrap();
-        conn.execute("UPDATE payments SET payment_date='2025-01-02T09:01:00Z' WHERE sale_id=?1",params![id]).unwrap();
+        conn.execute("UPDATE sales SET created_at='2025-01-02T09:00:00Z' WHERE id=?1", params![id]).unwrap();
+        conn.execute("UPDATE payments SET payment_date='2025-01-02T09:01:00Z' WHERE sale_id=?1", params![id]).unwrap();
         let tx = conn.transaction().unwrap();
-        let number = update_sale_in_transaction(&id,bill(150.0),&tx).unwrap();
+        let number = update_sale_in_transaction(&id, bill(150.0), &tx).unwrap();
         tx.commit().unwrap();
-        let (total, date): (f64,String) = conn.query_row("SELECT total,created_at FROM sales WHERE invoice_number=?1",params![number],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
-        assert_eq!(total,350.0); assert_eq!(date,"2025-01-02T09:00:00Z");
-        let (old_total, cancelled): (f64,Option<String>) = conn.query_row("SELECT total,cancelled_at FROM sales WHERE id=?1",params![id],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
-        assert_eq!(old_total,250.0); assert!(cancelled.is_some());
-        let (purchase,paid,balance): (f64,f64,f64) = conn.query_row("SELECT total_purchase,total_paid,balance FROM customers WHERE id='qa'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
-        assert_eq!((purchase,paid,balance),(350.0,100.0,250.0));
-        let worker_balance: f64 = conn.query_row("SELECT balance FROM mazdoors WHERE name='Rashid'",[],|r|r.get(0)).unwrap();
-        assert_eq!(worker_balance,50.0);
-        let (received,payment_date): (f64,String) = conn.query_row("SELECT p.amount,p.payment_date FROM payments p JOIN sales s ON s.id=p.sale_id WHERE s.cancelled_at IS NULL",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
-        assert_eq!(received,100.0); assert_eq!(payment_date,"2025-01-02T09:01:00Z");
-    }
-
-    #[test]
-    fn failure_after_replacement_creation_rolls_back_the_whole_correction() {
-        let mut conn = setup();
-        let id = save_original(&mut conn);
-        conn.execute_batch("CREATE TRIGGER reject_cancel BEFORE UPDATE OF cancelled_at ON sales WHEN NEW.cancelled_at IS NOT NULL BEGIN SELECT RAISE(ABORT,'QA cancellation failure'); END;").unwrap();
-        let queue_before: i64 = conn.query_row("SELECT COUNT(*) FROM sync_queue",[],|r|r.get(0)).unwrap();
-        {
-            let tx = conn.transaction().unwrap();
-            assert!(update_sale_in_transaction(&id,bill(150.0),&tx).is_err());
-        }
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM sales",[],|r|r.get(0)).unwrap();
-        let sequence: i64 = conn.query_row("SELECT next_invoice_number FROM business_settings",[],|r|r.get(0)).unwrap();
-        let balance: f64 = conn.query_row("SELECT balance FROM customers WHERE id='qa'",[],|r|r.get(0)).unwrap();
-        let queue_after: i64 = conn.query_row("SELECT COUNT(*) FROM sync_queue",[],|r|r.get(0)).unwrap();
-        assert_eq!(count,1); assert_eq!(sequence,1002); assert_eq!(balance,150.0); assert_eq!(queue_after,queue_before);
+        let (total, date, cancelled): (f64, String, Option<String>) = conn.query_row(
+            "SELECT total, created_at, cancelled_at FROM sales WHERE id=?1",
+            params![id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert_eq!(total, 350.0);
+        assert_eq!(date, "2025-01-02T09:00:00Z");
+        assert!(cancelled.is_none());
+        assert_eq!(number, "ARKI-1001");
+        let (purchase, paid, balance): (f64, f64, f64) = conn.query_row(
+            "SELECT total_purchase, total_paid, balance FROM customers WHERE id='qa'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).unwrap();
+        assert_eq!((purchase, paid, balance), (350.0, 100.0, 250.0));
+        let worker_balance: f64 = conn.query_row(
+            "SELECT balance FROM mazdoors WHERE name='Rashid'",
+            [],
+            |r| r.get(0),
+        ).unwrap();
+        assert_eq!(worker_balance, 50.0);
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1);
     }
 }
 

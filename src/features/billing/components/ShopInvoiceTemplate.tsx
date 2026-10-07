@@ -93,7 +93,14 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
             {(item.mazdooriTasks || []).map(task => <p key={task.id}>{task.title}{task.workerName ? ' · ' + task.workerName : ''}: {task.amount.toLocaleString()}</p>)}
           </div>)}
         </div>
-        {[['Goods', data.subtotal], ['Labour', data.totalMazdoori || 0], ['Discount', data.discount], ['TOTAL', data.total], ['Paid', data.paidAmount], ['Balance', data.remainingCredit]].map(([label, amount]) => <div key={label} className="flex justify-between gap-2"><span>{label}</span><b>{Number(amount).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</b></div>)}
+        {([
+          ['Goods', data.subtotal],
+          ['Labour', data.totalMazdoori || 0],
+          ...(data.discount > 0 ? [['Discount', data.discount] as [string, number]] : []),
+          ['TOTAL', data.total],
+          ['Paid', data.paidAmount],
+          ['Balance', data.remainingCredit],
+        ] as [string, number][]).map(([label, amount]) => <div key={label} className="flex justify-between gap-2"><span>{label}</span><b>{Number(amount).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</b></div>)}
         <p className="text-center mt-3 border-t border-black pt-2">{footerText}</p>
       </div>
     )
@@ -320,7 +327,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
               <tr className="bg-[#002855] text-white font-bold text-[12px]">
                 <th className="py-2 px-3 w-12 text-center border-r border-blue-900">Sr.</th>
                 <th className="py-2 px-3 border-r border-blue-900">Description</th>
-                <th className="py-2 px-3 w-16 text-center border-r border-blue-900">Qty</th>
+                <th className="py-2 px-3 w-16 text-center border-r border-blue-900">Qty/Kg</th>
                 <th className="py-2 px-3 w-28 text-center border-r border-blue-900">Rate (Rs.)</th>
                 <th className="py-2 px-3 w-28 text-center border-r border-blue-900">Mazdoori (Rs.)</th>
                 <th className="py-2 px-3 w-32 text-right">Amount (Rs.)</th>
@@ -430,12 +437,14 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
                 </div>
               ) : null}
 
-              <div className="flex justify-between items-center text-slate-800">
-                <span className="font-bold">Discount</span>
-                <span className="font-semibold">
-                  {data.discount > 0 ? `-${data.discount.toLocaleString()}` : '0'} Rs.
-                </span>
-              </div>
+              {data.discount > 0 ? (
+                <div className="flex justify-between items-center text-slate-800">
+                  <span className="font-bold">Discount</span>
+                  <span className="font-semibold">
+                    -{data.discount.toLocaleString()} Rs.
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             {/* Total Amount Dark Navy Ribbon */}

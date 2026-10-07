@@ -8,12 +8,23 @@ import { formatPKR } from '@/utils/financial'
 import { toast } from '@/stores/toast.store'
 import type { Customer } from '@/types'
 
+export interface ReceivePaymentBillInfo {
+  saleId: string
+  invoiceNumber: string
+  total: number
+  remainingCredit: number
+}
+
 interface ReceivePaymentModalProps {
   isOpen: boolean
-  customer: Customer | null
+  customer?: Customer | null
+  billInfo?: ReceivePaymentBillInfo | null
+  defaultAmount?: number
+  defaultNotes?: string
   onClose: () => void
   onSubmit: (payment: {
     customerId: string
+    saleId?: string
     amount: number
     paymentMethod: string
     notes?: string
@@ -23,6 +34,9 @@ interface ReceivePaymentModalProps {
 export function ReceivePaymentModal({
   isOpen,
   customer,
+  billInfo,
+  defaultAmount,
+  defaultNotes,
   onClose,
   onSubmit,
 }: ReceivePaymentModalProps) {
@@ -34,17 +48,25 @@ export function ReceivePaymentModal({
 
   useEffect(() => {
     if (isOpen) {
-      setAmount('')
+      const initialAmt =
+        defaultAmount !== undefined && defaultAmount > 0
+          ? defaultAmount
+          : billInfo
+          ? billInfo.remainingCredit
+          : 0
+      setAmount(initialAmt > 0 ? String(initialAmt) : '')
       setPaymentMethod('cash')
-      setNotes('')
+      setNotes(defaultNotes || (billInfo ? `Payment for Bill #${billInfo.invoiceNumber}` : ''))
       setError(null)
     }
-  }, [isOpen])
+  }, [isOpen, defaultAmount, defaultNotes, billInfo])
 
-  if (!customer) return null
+  if (!isOpen || (!customer && !billInfo)) return null
 
   const numAmount = parseFloat(amount) || 0
-  const remainingBalance = customer.balance - numAmount
+  const maxCredit = billInfo ? billInfo.remainingCredit : customer ? customer.balance : 0
+  const remainingBillCredit = billInfo ? Math.max(0, billInfo.remainingCredit - numAmount) : 0
+  const remainingCustomerBalance = customer ? customer.balance - numAmount : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -55,30 +77,41 @@ export function ReceivePaymentModal({
       return
     }
 
+    if (billInfo && numAmount > billInfo.remainingCredit + 0.01) {
+      setError(`Payment amount cannot exceed bill remaining credit (${formatPKR(billInfo.remainingCredit)}).`)
+      return
+    }
+
     setIsSubmitting(true)
     try {
       await onSubmit({
-        customerId: customer.id,
+        customerId: customer?.id || '',
+        saleId: billInfo?.saleId,
         amount: numAmount,
         paymentMethod,
         notes: notes.trim() || undefined,
       })
-      toast.success('Payment received and saved.')
       onClose()
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Could not save the payment. Please try again.'
-      setError(message); toast.error(message)
+      setError(message)
+      toast.error(message)
     } finally {
       setIsSubmitting(false)
     }
   }
 
+  const modalTitle = billInfo ? `Receive Payment - Bill #${billInfo.invoiceNumber}` : 'Receive Payment'
+  const modalDesc = billInfo
+    ? `Record payment for Bill #${billInfo.invoiceNumber}${customer ? ` (${customer.name})` : ''}`
+    : `Record payment received from ${customer?.name || 'Customer'}.`
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Receive Payment"
-      description={`Record payment received from ${customer.name}.`}
+      title={modalTitle}
+      description={modalDesc}
       size="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -88,31 +121,39 @@ export function ReceivePaymentModal({
           </div>
         )}
 
-        {/* Customer Balance Banner */}
+        {/* Balance / Remaining Credit Banner */}
         <div className="bg-slate-50 border border-slate-200/90 rounded-xl p-3 flex items-center justify-between">
           <div>
-            <p className="text-xs text-slate-500 font-medium">Amount Unpaid (Udhaar)</p>
+            <p className="text-xs text-slate-500 font-medium">
+              {billInfo ? `Bill Unpaid (Udhaar)` : 'Customer Balance (Udhaar)'}
+            </p>
             <p
               className={`text-lg font-bold ${
-                customer.balance > 0 ? 'text-red-600' : 'text-emerald-600'
+                maxCredit > 0 ? 'text-red-600' : 'text-emerald-600'
               }`}
             >
-              {formatPKR(customer.balance)}
+              {formatPKR(maxCredit)}
             </p>
           </div>
           {numAmount > 0 && (
             <div className="text-right">
-              <p className="text-xs text-slate-500 font-medium">Balance After Payment</p>
+              <p className="text-xs text-slate-500 font-medium">
+                {billInfo ? 'Remaining Bill Credit' : 'Balance After Payment'}
+              </p>
               <p
                 className={`text-lg font-bold ${
-                  remainingBalance > 0
+                  billInfo
+                    ? remainingBillCredit > 0
+                      ? 'text-amber-600'
+                      : 'text-emerald-600'
+                    : remainingCustomerBalance > 0
                     ? 'text-amber-600'
-                    : remainingBalance === 0
+                    : remainingCustomerBalance === 0
                     ? 'text-emerald-600'
                     : 'text-blue-600'
                 }`}
               >
-                {formatPKR(remainingBalance)}
+                {formatPKR(billInfo ? remainingBillCredit : remainingCustomerBalance)}
               </p>
             </div>
           )}
@@ -121,7 +162,7 @@ export function ReceivePaymentModal({
         <Input
           label="Payment Amount (Rs)"
           type="number"
-          min="1"
+          min="0.01"
           step="any"
           placeholder="Enter amount in PKR"
           value={amount}
@@ -142,7 +183,7 @@ export function ReceivePaymentModal({
 
         <Textarea
           label="Notes / Receipt Reference (Optional)"
-          placeholder="e.g. Received via JazzCash / Bank slip # 9210"
+          placeholder="e.g. Received via Cash / Bank slip # 9210"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
@@ -152,7 +193,7 @@ export function ReceivePaymentModal({
           <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button type="submit" isLoading={isSubmitting}>
+          <Button type="submit" isLoading={isSubmitting} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
             Confirm Payment
           </Button>
         </div>
