@@ -52,16 +52,3 @@ export const useUIStore = create<UIState>((set) => ({
   closeConfirm: () => set({ confirmConfig: null, isConfirmLoading: false }),
   setConfirmLoading: (isConfirmLoading) => set({ isConfirmLoading }),
 }))
-
-// Auto-sync online/offline network events
-if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    useUIStore.getState().setIsOnline(true)
-    useUIStore.getState().setSyncStatus('pending')
-  })
-  window.addEventListener('offline', () => {
-    useUIStore.getState().setIsOnline(false)
-    useUIStore.getState().setSyncStatus('pending')
-  })
-}
-

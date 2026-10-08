@@ -80,7 +80,7 @@ pub fn restore_database(backup: Value, app: tauri::AppHandle, state: State<DbSta
         }
     }
     let invalid: i64 = tx.query_row("SELECT COUNT(*) FROM sales s WHERE total <= 0 OR paid_amount < 0 OR paid_amount > total OR ABS(total-paid_amount-remaining_credit) > 0.02 OR ABS(total-(SELECT COALESCE(SUM(amount),0) FROM sale_items WHERE sale_id=s.id)+discount) > 0.02", [], |r| r.get(0)).map_err(|e| e.to_string())?;
-    let invalid_items: i64 = tx.query_row("SELECT COUNT(*) FROM sale_items WHERE quantity<=0 OR rate<0 OR mazdoori<0 OR ABS(quantity*rate+mazdoori-amount)>0.02", [], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let invalid_items: i64 = tx.query_row("SELECT COUNT(*) FROM sale_items WHERE quantity<=0 OR rate<0 OR mazdoori<0 OR (ABS(quantity*rate-amount)>0.02 AND ABS(quantity*rate+mazdoori-amount)>0.02)", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     let defaults: i64 = tx.query_row("SELECT COUNT(*) FROM business_settings WHERE id='default' AND next_invoice_number>0 AND length(invoice_prefix)>0", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     let invalid_expenses: i64 = tx.query_row("SELECT COUNT(*) FROM expenses WHERE amount<=0 OR length(category)=0 OR payment_method NOT IN ('cash','bank')", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     if invalid > 0 || invalid_items > 0 || invalid_expenses > 0 || defaults != 1 { return Err("Backup financial validation failed; original data retained".into()); }

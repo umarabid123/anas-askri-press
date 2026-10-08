@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  LayoutDashboard,
   Settings,
   Users,
   UserCheck,
@@ -20,7 +19,6 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { name: 'Home', to: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { name: 'New Bill', to: ROUTES.NEW_BILL, icon: FileText },
   { name: 'All Records', to: ROUTES.BILLS, icon: FileText },
   { name: 'Customers', to: ROUTES.CUSTOMERS, icon: Users },
@@ -66,7 +64,7 @@ export function Sidebar() {
                 key={item.to}
                 to={item.to}
                 onClick={event => { if (item.to === ROUTES.NEW_BILL && !startNewBill()) event.preventDefault() }}
-                end={item.to === ROUTES.DASHBOARD}
+                end
                 title={sidebarCollapsed ? item.name : undefined}
                 className={({ isActive }) =>
                   cn(

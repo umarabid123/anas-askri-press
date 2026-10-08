@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useBusinessSettingsStore } from '@/stores/business-settings.store'
 import { printDocument } from '@/utils/printing'
 import { getBusinessSettings, DEFAULT_SETTINGS } from '@/services/sqlite.service'
 import { Modal } from '@/components/ui/Modal'
@@ -21,13 +22,11 @@ export function CustomerStatementModal({
   onClose,
 }: CustomerStatementModalProps) {
   // Same shop name as the invoice (from Settings)
-  const [shopName, setShopName] = useState(DEFAULT_SETTINGS.businessName)
+  const settings = useBusinessSettingsStore((state) => state.settings) ?? DEFAULT_SETTINGS
 
   useEffect(() => {
     if (isOpen) {
-      getBusinessSettings().then((res) => {
-        if (res?.businessName) setShopName(res.businessName)
-      }).catch(console.error)
+      void getBusinessSettings().catch(console.error)
     }
   }, [isOpen])
 
@@ -55,10 +54,10 @@ export function CustomerStatementModal({
         <div id="customer-statement-print" className="bg-white p-6 border border-slate-200 rounded-xl space-y-5 print:border-none print:p-0">
           {/* Business Header */}
           <div className="border-b border-slate-200 pb-4 text-center">
-            <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">{shopName}</h2>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Chadar • Dabi • Chogat • Laser Cutting • CNC Cutting
-            </p>
+            <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">{settings.businessName}</h2>
+            {settings.subtitle && <p className="text-xs text-slate-500 font-medium mt-0.5">
+              {settings.subtitle}
+            </p>}
             <p className="text-xs font-semibold text-slate-700 mt-1">ACCOUNT STATEMENT</p>
           </div>
 

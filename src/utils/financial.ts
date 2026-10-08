@@ -29,11 +29,10 @@ export function isValidDateKey(value: string): boolean {
   return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
 }
 
-export function calculateItemAmount(quantity: number, rate: number, mazdoori: number = 0): number {
+export function calculateItemAmount(quantity: number, rate: number): number {
   const q = Number(quantity) || 0
   const r = Number(rate) || 0
-  const m = Number(mazdoori) || 0
-  return Math.round((q * r + m) * 100) / 100
+  return Math.round(q * r * 100) / 100
 }
 
 export function calculateSubtotal(items: Array<{ amount: number }>): number {
