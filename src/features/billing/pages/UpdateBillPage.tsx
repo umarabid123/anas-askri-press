@@ -197,7 +197,7 @@ export function UpdateBillPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Update Bill</h1>
+            <h1 className="text-xl font-semibold text-slate-900 leading-tight">Update Bill</h1>
             <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">
               {filteredSales.length} {filteredSales.length === 1 ? 'Bill' : 'Bills'}
             </span>
@@ -223,7 +223,7 @@ export function UpdateBillPage() {
           <Button
             type="button"
             onClick={handleStartNew}
-            className="bg-[#1877F2] hover:bg-blue-600 text-white flex items-center gap-1.5 shadow-xs"
+            className="bg-blue-700 hover:bg-blue-800 text-white flex items-center gap-1.5 shadow-xs"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>New Bill</span>
@@ -232,8 +232,8 @@ export function UpdateBillPage() {
       </div>
 
       {/* Metric Cards Row - 2-column Grid (Total Active Bills card removed) */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-xs font-medium text-slate-500">Total Sales Value</p>
           <p className="text-xl font-bold text-slate-900 mt-1">{formatPKR(totalSalesAmount)}</p>
           <p className="text-[11px] text-emerald-600 font-medium mt-0.5 truncate">
@@ -241,15 +241,15 @@ export function UpdateBillPage() {
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs">
-          <p className="text-xs font-medium text-slate-500">Total Udhaar (Unpaid)</p>
-          <p className="text-xl font-bold text-red-600 mt-1">{formatPKR(totalUnpaidCredit)}</p>
-          <p className="text-[11px] text-red-500 mt-0.5 truncate">Remaining balance to collect</p>
+        <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
+          <p className="text-xs font-medium text-amber-800">Total Udhaar (Unpaid)</p>
+          <p className="text-xl font-bold text-amber-900 mt-1">{formatPKR(totalUnpaidCredit)}</p>
+          <p className="text-xs text-amber-800 mt-1">Remaining balance to collect</p>
         </div>
       </div>
 
       {/* Search and Filters Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-2xs space-y-3">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
         {/* Row 1: Search and Status Filters */}
         <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
           {/* Search Field */}
@@ -275,42 +275,17 @@ export function UpdateBillPage() {
             )}
           </div>
 
-          {/* Payment Status Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl overflow-x-auto shrink-0">
-            <button
-              type="button"
-              onClick={() => setStatusFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                statusFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              All Status
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('unpaid')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                statusFilter === 'unpaid'
-                  ? 'bg-white text-red-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Unpaid (Udhaar)
-            </button>
-            <button
-              type="button"
-              onClick={() => setStatusFilter('paid')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                statusFilter === 'paid'
-                  ? 'bg-white text-emerald-600 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Paid
-            </button>
-          </div>
+          {/* Payment Status Filter */}
+          <select
+            aria-label="Payment status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            className="h-10 w-full md:w-44 shrink-0 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+          >
+            <option value="all">All Status</option>
+            <option value="unpaid">Unpaid (Udhaar)</option>
+            <option value="paid">Paid</option>
+          </select>
         </div>
 
         {/* Row 2: Date Preset Tabs (All, Today, Weekly, Monthly, Custom) & Custom Date Pickers */}
@@ -321,7 +296,7 @@ export function UpdateBillPage() {
               onClick={() => setDatePreset('all')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 datePreset === 'all'
-                  ? 'bg-white text-slate-900 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-800 ring-1 ring-blue-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -332,7 +307,7 @@ export function UpdateBillPage() {
               onClick={() => setDatePreset('today')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 datePreset === 'today'
-                  ? 'bg-white text-blue-600 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-800 ring-1 ring-blue-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -343,7 +318,7 @@ export function UpdateBillPage() {
               onClick={() => setDatePreset('weekly')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 datePreset === 'weekly'
-                  ? 'bg-white text-blue-600 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-800 ring-1 ring-blue-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -354,7 +329,7 @@ export function UpdateBillPage() {
               onClick={() => setDatePreset('monthly')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 datePreset === 'monthly'
-                  ? 'bg-white text-blue-600 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-800 ring-1 ring-blue-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -365,7 +340,7 @@ export function UpdateBillPage() {
               onClick={() => setDatePreset('custom')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
                 datePreset === 'custom'
-                  ? 'bg-white text-blue-600 shadow-2xs'
+                  ? 'bg-blue-50 text-blue-800 ring-1 ring-blue-200'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -450,7 +425,7 @@ export function UpdateBillPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm border-collapse min-w-[1050px]">
                 <thead>
-                  <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700 whitespace-nowrap">
+                  <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700 whitespace-nowrap">
                     <th className="py-3 px-4 min-w-[130px]">Bill #</th>
                     <th className="py-3 px-4 min-w-[120px]">Date</th>
                     <th className="py-3 px-4 min-w-[160px]">Customer</th>
@@ -593,7 +568,7 @@ export function UpdateBillPage() {
                             <button
                               type="button"
                               onClick={() => handleUpdateBill(sale)}
-                              className="h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap bg-[#1877F2] hover:bg-blue-600 text-white shadow-2xs"
+                              className="h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap bg-blue-700 hover:bg-blue-800 text-white shadow-2xs"
                               title="Update this bill"
                             >
                               <FileEdit className="w-3.5 h-3.5" />

@@ -140,7 +140,7 @@ export function CustomerDetailPage() {
       {/* Top Header Card */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <button
               onClick={() => navigate('/customers')}
               className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
@@ -166,7 +166,7 @@ export function CustomerDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               onClick={handleNewBill}
-              className="bg-[#1877F2] hover:bg-blue-600 flex items-center gap-1.5 shadow-xs"
+              className="bg-blue-700 hover:bg-blue-800 flex items-center gap-1.5 shadow-xs"
             >
               <FilePlus className="w-4 h-4 stroke-[2.5]" />
               <span>New Bill</span>
@@ -251,7 +251,7 @@ export function CustomerDetailPage() {
       {/* Ledger Section Card */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs flex-1 flex flex-col">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2">
               <Clock className="w-5 h-5 text-slate-600 stroke-[2.2]" />
               <h2 className="text-base font-bold text-slate-900">Account Ledger & Transaction History</h2>
@@ -288,10 +288,10 @@ export function CustomerDetailPage() {
 
         {/* Ledger Table */}
         {activeTab === 'ledger' ? (
-        <div className="border border-slate-200/90 rounded-xl overflow-hidden flex-1">
-          <table className="w-full text-left text-sm border-collapse">
+        <div className="border border-slate-200 rounded-lg overflow-x-auto flex-1">
+          <table className="w-full min-w-[760px] text-left text-sm border-collapse">
             <thead>
-              <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+              <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
                 <th className="py-2.5 px-4">Date</th>
                 <th className="py-2.5 px-4">Description</th>
@@ -352,10 +352,10 @@ export function CustomerDetailPage() {
         </div>
         ) : (
         /* Invoices Table */
-        <div className="border border-slate-200/90 rounded-xl overflow-hidden flex-1">
-          <table className="w-full text-left text-sm border-collapse">
+        <div className="border border-slate-200 rounded-lg overflow-x-auto flex-1">
+          <table className="w-full min-w-[760px] text-left text-sm border-collapse">
             <thead>
-              <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+              <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
                 <th className="py-2.5 px-4">Invoice #</th>
                 <th className="py-2.5 px-4">Date</th>

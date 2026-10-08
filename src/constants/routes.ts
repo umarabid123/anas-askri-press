@@ -1,5 +1,4 @@
 export const ROUTES = {
-  DASHBOARD: '/',
   NEW_BILL: '/new-bill',
   BILLS: '/bills',
   CUSTOMERS: '/customers',

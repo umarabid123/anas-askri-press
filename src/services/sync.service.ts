@@ -1,7 +1,7 @@
 import { useUIStore } from '@/stores/ui.store'
 import type { SyncResult, SyncQueueRecord } from '@/types/database'
 import { exportDatabase, getSyncQueue, updateSyncStatus } from './sqlite.service'
-import { getSupabaseClient, isSupabaseConfigured } from './supabase'
+import { syncCloudChanges, isSupabaseConfigured } from './supabase'
 import { TABLES, type Backup, type TableName, type Row } from './data-model'
 
 const aliases: Record<string, TableName> = { customer: 'customers', sale: 'sales', item: 'items', sale_item: 'sale_items', sale_item_mazdoori_task: 'sale_item_mazdoori_tasks', payment: 'payments', mazdoor: 'mazdoors', mazdoori_entry: 'mazdoori_entries', customer_ledger: 'customer_ledger', business_settings: 'business_settings', expense: 'expenses' }
@@ -43,8 +43,44 @@ class SyncService {
   private interval: ReturnType<typeof setInterval> | null = null
   private retryAt = 0
   private lastError: string | null = null
+  private scheduled: ReturnType<typeof setTimeout> | null = null
+  private unsubscribeStore: (() => void) | null = null
+  private onlineHandler = () => {
+    useUIStore.getState().setIsOnline(true)
+    this.retryAt = 0
+    this.schedule(0)
+  }
+  private offlineHandler = () => {
+    useUIStore.getState().setIsOnline(false)
+    useUIStore.getState().setSyncStatus('pending')
+  }
+  private schedule(delay = 250) {
+    if (!this.interval) return
+    if (this.scheduled) clearTimeout(this.scheduled)
+    this.scheduled = setTimeout(() => {
+      this.scheduled = null
+      void this.processQueue().catch(error => {
+        this.lastError = error instanceof Error ? error.message : String(error)
+        useUIStore.getState().setSyncStatus('failed')
+      })
+    }, delay)
+  }
   public start() {
-    if (!this.interval) this.interval = setInterval(() => { void this.processQueue() }, 15000)
+    if (this.interval) return
+    // Periodic retries also cover native SQLite writes and Wi-Fi that stays
+    // connected while the cloud endpoint temporarily cannot be reached.
+    this.interval = setInterval(() => this.schedule(0), 15000)
+    window.addEventListener('online', this.onlineHandler)
+    window.addEventListener('offline', this.offlineHandler)
+    this.unsubscribeStore = useUIStore.subscribe((state, previous) => {
+      if (state.isOnline && !previous.isOnline) {
+        this.retryAt = 0
+        this.schedule(0)
+      } else if (state.syncStatus === 'pending' && previous.syncStatus !== 'pending') {
+        this.schedule()
+      }
+    })
+    this.schedule(0)
   }
   public async processQueue(manual = false): Promise<SyncResult> {
     const result: SyncResult = { totalProcessed: 0, successCount: 0, failedCount: 0, errors: [] }
@@ -54,14 +90,9 @@ class SyncService {
     if (!isSupabaseConfigured()) { useUIStore.getState().setSyncStatus('pending'); return result }
     if (!navigator.onLine) { useUIStore.getState().setIsOnline(false); useUIStore.getState().setSyncStatus('pending'); return result }
     if (!manual && Date.now() < this.retryAt) return result
-    const client = getSupabaseClient()
-    if (!client) return result
     this.processing = true
     let queue: SyncQueueRecord[] = []
     try {
-      const { data, error: authError } = await client.auth.getSession()
-      if (authError) throw authError
-      if (!data.session) { useUIStore.getState().setSyncStatus('pending'); return result }
       // One coherent local snapshot; rows created during network I/O remain queued.
       const snapshot = await exportDatabase()
       queue = snapshot.tables.sync_queue.filter(r => r.status !== 'synced').map(r => ({
@@ -72,12 +103,13 @@ class SyncService {
       useUIStore.getState().setSyncStatus('syncing')
       result.totalProcessed = queue.length
       const changes = buildChanges(snapshot, queue)
-      const { error } = await client.rpc('apply_pos_changes', { changes })
-      if (error) throw new Error(error.message)
+      await syncCloudChanges(changes)
       for (const item of queue) await updateSyncStatus(item.id, 'synced')
       result.successCount = queue.length; this.lastError = null; this.retryAt = 0
       useUIStore.getState().setLastSyncTime(new Date().toISOString())
-      useUIStore.getState().setSyncStatus((await getSyncQueue()).length ? 'pending' : 'synced')
+      const hasMore = (await getSyncQueue()).length > 0
+      useUIStore.getState().setSyncStatus(hasMore ? 'pending' : 'synced')
+      if (hasMore) this.schedule()
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err)
       result.failedCount = queue.length || 1
@@ -98,6 +130,13 @@ class SyncService {
     }
   }
   public calculateBackoffDelay(retryCount: number): number { return Math.min(2000 * 2 ** Math.min(retryCount, 5), 60000) }
-  public cleanup() { if (this.interval) clearInterval(this.interval); this.interval = null }
+  public cleanup() {
+    if (this.interval) clearInterval(this.interval)
+    if (this.scheduled) clearTimeout(this.scheduled)
+    this.interval = null; this.scheduled = null
+    window.removeEventListener('online', this.onlineHandler)
+    window.removeEventListener('offline', this.offlineHandler)
+    this.unsubscribeStore?.(); this.unsubscribeStore = null
+  }
 }
 export const syncService = new SyncService()

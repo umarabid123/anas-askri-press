@@ -3,20 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
-  DollarSign,
-  Eye,
-  FilePlus,
-  Pencil,
   Plus,
   Search,
-  Trash2,
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useCustomers } from '@/hooks/useCustomers'
-import { useCartStore } from '@/stores/cart.store'
-import { ROUTES } from '@/constants/routes'
 import { formatPKR } from '@/utils/financial'
 import { AddCustomerModal } from '../components/AddCustomerModal'
 import { EditCustomerModal } from '../components/EditCustomerModal'
@@ -36,7 +29,6 @@ export function CustomersPage() {
     removeCustomer,
     recordPayment,
   } = useCustomers()
-  const setCustomerInCart = useCartStore((s) => s.setCustomer)
 
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -76,11 +68,6 @@ export function CustomersPage() {
   const totalPaid = customers.reduce((s, c) => s + (c.totalPaid || 0), 0)
   const totalCredit = customers.reduce((s, c) => s + (c.balance || 0), 0)
 
-  const handleNewBill = (customer: Customer) => {
-    setCustomerInCart(customer)
-    navigate(ROUTES.NEW_BILL)
-  }
-
   const handleDeleteConfirm = async () => {
     if (!deletingCustomer) return
     setDeleteError(null)
@@ -93,20 +80,20 @@ export function CustomersPage() {
   }
 
   return (
-    <div className="space-y-4 h-full flex flex-col justify-between">
+    <div className="min-h-full flex flex-col gap-4">
       {/* Main Table Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs flex-1 flex flex-col">
+      <div className="bg-white rounded-xl border border-slate-200 p-4 sm:p-5 flex-1 flex flex-col">
         {/* Title & Action Row */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div>
-            <h1 className="text-[22px] font-bold text-slate-900 leading-tight">Customers</h1>
+            <h1 className="text-xl font-semibold text-slate-900 leading-tight">Customers</h1>
             <p className="text-[13px] text-slate-500 mt-0.5">
               Manage client records, receivables, and transaction ledgers
             </p>
           </div>
           <Button
             onClick={() => setIsAddOpen(true)}
-            className="bg-[#1877F2] hover:bg-blue-600 flex items-center gap-1.5 shadow-xs shrink-0"
+            className="bg-blue-700 hover:bg-blue-800 flex items-center gap-1.5 shadow-xs shrink-0"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>Add Customer</span>
@@ -143,20 +130,21 @@ export function CustomersPage() {
             <div className="overflow-x-auto flex-1">
               <table className="w-full text-left text-sm border-collapse min-w-[700px]">
                 <thead>
-                  <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+                  <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                     <th className="py-2.5 px-3 w-10 text-center">#</th>
                     <th className="py-2.5 px-4">Name</th>
                     <th className="py-2.5 px-4">Mobile</th>
+                    <th className="py-2.5 px-4">Address</th>
                     <th className="py-2.5 px-4 text-right">Total Purchase</th>
                     <th className="py-2.5 px-4 text-right">Paid</th>
                     <th className="py-2.5 px-4 text-right">Credit (Balance)</th>
-                    <th className="py-2.5 px-4 text-center w-36">Actions</th>
+                    <th className="py-2.5 px-4 text-center w-64">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                      <td colSpan={8} className="py-12 text-center text-slate-400">
                         <p className="font-semibold text-sm">No customers found</p>
                         <p className="text-xs mt-1">
                           {searchTerm
@@ -174,18 +162,16 @@ export function CustomersPage() {
                         <td className="py-3 px-4">
                           <button
                             onClick={() => navigate(`/customers/${customer.id}`)}
-                            className="font-semibold text-slate-900 text-sm hover:text-blue-600 text-left transition-colors cursor-pointer"
+                            className="font-semibold text-blue-800 text-sm underline decoration-blue-200 underline-offset-4 hover:decoration-blue-700 text-left transition-colors cursor-pointer"
                           >
                             {customer.name}
                           </button>
-                          {customer.address && (
-                            <p className="text-[11px] text-slate-400 truncate max-w-xs">
-                              {customer.address}
-                            </p>
-                          )}
                         </td>
                         <td className="py-3 px-4 text-slate-600 text-sm font-medium">
                           {customer.mobile}
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 text-sm min-w-48 max-w-xs whitespace-normal break-words">
+                          {customer.address?.trim() || 'Not added'}
                         </td>
                         <td className="py-3 px-4 text-right text-slate-800 font-semibold text-sm">
                           {formatPKR(customer.totalPurchase)}
@@ -201,38 +187,30 @@ export function CustomersPage() {
                           {formatPKR(customer.balance)}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center gap-1.5 text-slate-600">
-                            <button
-                              type="button"
-                              onClick={() => handleNewBill(customer)}
-                              className="p-1.5 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                              title="Create New Bill"
-                            >
-                              <FilePlus className="w-4 h-4 stroke-[2]" />
-                            </button>
+                          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap text-xs font-semibold">
                             <button
                               type="button"
                               onClick={() => setPaymentCustomer(customer)}
-                              className="p-1.5 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                              className="px-2.5 py-2 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
                               title="Receive Payment"
                             >
-                              <DollarSign className="w-4 h-4 stroke-[2.2]" />
+                              Receive
                             </button>
                             <button
                               type="button"
                               onClick={() => navigate(`/customers/${customer.id}`)}
-                              className="p-1.5 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              className="px-2.5 py-2 text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors cursor-pointer"
                               title="View Ledger & Statement"
                             >
-                              <Eye className="w-4 h-4 stroke-[2]" />
+                              View
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingCustomer(customer)}
-                              className="p-1.5 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                              className="px-2.5 py-2 text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors cursor-pointer"
                               title="Edit Customer"
                             >
-                              <Pencil className="w-4 h-4 stroke-[2]" />
+                              Edit
                             </button>
                             <button
                               type="button"
@@ -240,10 +218,10 @@ export function CustomersPage() {
                                 setDeleteError(null)
                                 setDeletingCustomer(customer)
                               }}
-                              className="p-1.5 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                              className="px-2.5 py-2 text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors cursor-pointer"
                               title="Delete Customer"
                             >
-                              <Trash2 className="w-4 h-4 stroke-[2]" />
+                              Delete
                             </button>
                           </div>
                         </td>

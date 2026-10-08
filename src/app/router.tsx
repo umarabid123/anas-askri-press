@@ -1,9 +1,8 @@
 import { lazy } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
 import { PageLayout } from '@/components/layout/PageLayout'
 import { ROUTES } from '@/constants/routes'
-const DashboardPage = lazy(() => import('@/features/dashboard/pages/DashboardPage').then(module => ({ default: module.DashboardPage })))
 const NewBillPage = lazy(() => import('@/features/billing/pages/NewBillPage').then(module => ({ default: module.NewBillPage })))
 const UpdateBillPage = lazy(() => import('@/features/billing/pages/UpdateBillPage').then(module => ({ default: module.UpdateBillPage })))
 const CustomersPage = lazy(() => import('@/features/customers/pages/CustomersPage').then(module => ({ default: module.CustomersPage })))
@@ -18,7 +17,7 @@ export function AppRouter() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<PageLayout />}>
-            <Route index element={<DashboardPage />} />
+            <Route index element={<Navigate to={ROUTES.NEW_BILL} replace />} />
             <Route path={ROUTES.NEW_BILL} element={<NewBillPage />} />
             <Route path={ROUTES.BILLS} element={<UpdateBillPage />} />
             <Route path={ROUTES.CUSTOMERS} element={<CustomersPage />} />
@@ -26,8 +25,7 @@ export function AppRouter() {
             <Route path={ROUTES.MAZDOORI} element={<MazdooriPage />} />
             <Route path={ROUTES.REPORTS} element={<ReportsPage />} />
             <Route path={ROUTES.SETTINGS} element={<SettingsPage />} />
-            {/* Fallback to Dashboard */}
-            <Route path="*" element={<DashboardPage />} />
+            <Route path="*" element={<Navigate to={ROUTES.NEW_BILL} replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

@@ -1,13 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
-import { Input } from '@/components/ui/Input'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { validateBackup, type Backup } from '@/services/data-model'
 import { isTauri, restoreDatabase } from '@/services/sqlite.service'
 import { automaticBackup, exportBackup, saveFile } from '@/services/files.service'
-import { getSupabaseClient, isSupabaseConfigured } from '@/services/supabase'
+import { exportCloudRecords, isSupabaseConfigured } from '@/services/supabase'
 import { syncService } from '@/services/sync.service'
 import { toast } from '@/stores/toast.store'
 
@@ -18,16 +17,6 @@ export function DataSafetyPanel() {
   const [error, setError] = useState('')
   const [pending, setPending] = useState<Backup | null>(null)
   const [daily, setDaily] = useState(localStorage.getItem('arki_daily_backup') === 'true')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [account, setAccount] = useState<string | null>(null)
-  const client = getSupabaseClient()
-  useEffect(() => {
-    if (!client) return
-    void client.auth.getSession().then(({ data }) => setAccount(data.session?.user.email || null))
-    const { data } = client.auth.onAuthStateChange((_, session) => setAccount(session?.user.email || null))
-    return () => data.subscription.unsubscribe()
-  }, [client])
   async function action(work: () => Promise<void>) {
     if (busy) return
     setBusy(true); setError(''); setMessage('')
@@ -41,7 +30,7 @@ export function DataSafetyPanel() {
   const upload = () => action(async () => {
     const result = await syncService.processQueue(true)
     if (result.errors.length) throw new Error(result.errors.map(e => e.error).join('; '))
-    setMessage(result.successCount ? 'Local changes uploaded to cloud.' : 'No changes uploaded. Check that your approved cloud account is signed in.')
+    setMessage(result.successCount ? 'Local changes uploaded to cloud.' : 'No pending changes to upload.')
   })
   return <Card className="p-5 space-y-4">
     <h2 className="font-semibold">Backups & Cloud Records</h2>
@@ -66,33 +55,22 @@ export function DataSafetyPanel() {
     }} />Create a daily recovery copy when the app opens</label>
     <p className="text-xs text-slate-500">{isTauri() ? 'Daily and pre-restore copies are stored in the application data backups folder.' : 'Browser recovery copies remain in this browser. Clearing site data removes them; download backups regularly.'}</p>
     <div className="border-t pt-4 space-y-3">
-      <h3 className="font-semibold">Optional Cloud Sync</h3>
+      <h3 className="font-semibold">Automatic Cloud Sync</h3>
       {!isSupabaseConfigured() ? <p className="text-sm">Cloud is not configured. Offline billing and downloaded backups work normally.</p> : <>
-        <p className="text-xs text-slate-600">Use an existing approved shop account after the secure database migration has been applied. Signing in does not automatically replace local records.</p>
-        {account ? <><p className="text-sm">Signed in: {account}</p><div className="flex gap-2 flex-wrap">
+        <p className="text-sm text-slate-600">Records save on this device first. Changes upload automatically while online; no email or password is needed. If the internet stops, keep working; pending changes upload when it returns.</p>
+        <div className="flex gap-2 flex-wrap">
           <Button type="button" disabled={busy} onClick={upload}>Upload / Resume Sync</Button>
           <Button type="button" variant="outline" disabled={busy} onClick={() => action(async () => {
             await syncService.pause()
-            const { data, error } = await client!.rpc('export_pos_data')
-            if (error) throw new Error(error.message)
+            const data = await exportCloudRecords()
             stage(data)
           })}>Restore Cloud Records</Button>
           <Button type="button" variant="outline" disabled={busy} onClick={() => action(async () => {
-            const { data, error } = await client!.rpc('export_pos_data')
-            if (error) throw new Error(error.message)
+            const data = await exportCloudRecords()
             const backup = validateBackup(data)
             if (await saveFile('ARKI-CLOUD-BACKUP.json', new Blob([JSON.stringify(backup)], { type: 'application/json' }))) setMessage('Cloud backup exported.')
           })}>Export Cloud Backup</Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => action(async () => { const { error } = await client!.auth.signOut(); if (error) throw error; setMessage('Cloud account signed out. Local records remain available.') })}>Sign Out</Button>
-        </div></> : <div className="space-y-3">
-          <Input label="Cloud account email" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} />
-          <Input label="Cloud account password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} />
-          <Button type="button" disabled={busy || !email || !password} onClick={() => action(async () => {
-            const { error } = await client!.auth.signInWithPassword({ email: email.trim(), password })
-            if (error) throw error
-            setPassword(''); setMessage('Signed in. Upload local changes or review cloud records below.')
-          })}>Sign In</Button>
-        </div>}
+        </div>
       </>}
     </div>
     <ConfirmDialog isOpen={!!pending} onClose={() => { if (!busy) setPending(null) }} title="Replace local records?"

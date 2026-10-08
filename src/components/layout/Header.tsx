@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react'
 import { Calendar } from 'lucide-react'
 import { ShopLogo } from '@/components/common/ShopLogo'
 import { SyncStatusIndicator } from '@/components/common/SyncStatusIndicator'
+import { DEFAULT_SETTINGS, getBusinessSettings } from '@/services/sqlite.service'
+import { useBusinessSettingsStore } from '@/stores/business-settings.store'
 
 export function Header() {
+  const settings = useBusinessSettingsStore((state) => state.settings) ?? DEFAULT_SETTINGS
   const [now, setNow] = useState(() => new Date())
+
+  useEffect(() => { void getBusinessSettings().catch(console.error) }, [])
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
@@ -33,11 +38,11 @@ export function Header() {
         <ShopLogo className="w-10 h-10" />
         <div>
           <h1 className="text-[19px] font-bold text-slate-900 tracking-tight leading-tight">
-            Arki Press & CNC Shop
+            {settings.businessName}
           </h1>
-          <p className="text-[13px] text-slate-500 font-normal leading-tight mt-0.5">
-            Chadar • Dabi • Chogat • Laser Cutting
-          </p>
+          {settings.subtitle && <p className="text-[13px] text-slate-500 font-normal leading-tight mt-0.5">
+            {settings.subtitle}
+          </p>}
         </div>
       </div>
 

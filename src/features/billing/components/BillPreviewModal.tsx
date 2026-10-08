@@ -13,7 +13,8 @@ import { Button } from '@/components/ui/Button'
 import { ShopInvoiceTemplate, type ShopInvoiceData } from './ShopInvoiceTemplate'
 import { CancelInvoiceDialog } from './CancelInvoiceDialog'
 import { ReceivePaymentModal } from '@/features/customers/components/ReceivePaymentModal'
-import { getBusinessSettings, getSales, getCustomerById, receivePayment } from '@/services/sqlite.service'
+import { getBusinessSettings, getSales, getCustomerById, getCustomerLedger, receivePayment } from '@/services/sqlite.service'
+import { previousInvoiceBalance } from '../invoice-data'
 import type { BusinessSettings, Customer } from '@/types'
 
 interface BillPreviewModalProps {
@@ -25,7 +26,7 @@ interface BillPreviewModalProps {
   onCancelled?: () => void
 }
 
-const PNG_OPTIONS = { pixelRatio: 2.5, backgroundColor: '#ffffff', cacheBust: true }
+const PNG_OPTIONS = { pixelRatio: 3, backgroundColor: '#ffffff', cacheBust: true }
 
 export function BillPreviewModal({
   isOpen,
@@ -46,6 +47,20 @@ export function BillPreviewModal({
   const [isOpeningEdit, setIsOpeningEdit] = useState(false)
   const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false)
   const [receivePaymentCustomer, setReceivePaymentCustomer] = useState<Customer | null>(null)
+  const [accountSnapshot, setAccountSnapshot] = useState<{ data: ShopInvoiceData; previousBalance: number } | null>(null)
+  const accountReady = !!data && (data.previousBalance !== undefined || (!data.customerId && !data.customer?.id) || accountSnapshot?.data === data)
+  const invoiceData = data ? { ...data, previousBalance: data.previousBalance ?? (accountSnapshot?.data === data ? accountSnapshot.previousBalance : 0) } : null
+
+  useEffect(() => {
+    if (!isOpen || !data || data.previousBalance !== undefined) return
+    const customerId = data.customerId || data.customer?.id
+    if (!customerId) return
+    let cancelled = false
+    getCustomerLedger(customerId).then(ledger => {
+      if (!cancelled) setAccountSnapshot({ data, previousBalance: previousInvoiceBalance(data, ledger) })
+    }).catch(err => { if (!cancelled) setExportError(err instanceof Error ? err.message : String(err)) })
+    return () => { cancelled = true }
+  }, [isOpen, data])
 
   const handleOpenReceivePayment = async () => {
     if (!data) return
@@ -118,7 +133,7 @@ export function BillPreviewModal({
   // as a user action (browsers reject navigator.share after a slow render).
   useEffect(() => {
     pngCache.current = null
-    if (!isOpen || !data) return
+    if (!isOpen || !data || !accountReady) return
     let cancelled = false
     const timer = setTimeout(() => {
       if (!invoiceRef.current) return
@@ -127,7 +142,14 @@ export function BillPreviewModal({
         .catch(() => {})
     }, 300)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [isOpen, data, settings])
+  }, [isOpen, data, settings, accountReady, accountSnapshot])
+
+  useEffect(() => {
+    if (!isOpen || !invoiceRef.current) return
+    const observer = new ResizeObserver(() => { pngCache.current = null })
+    observer.observe(invoiceRef.current)
+    return () => observer.disconnect()
+  }, [isOpen, accountReady])
 
   if (!isOpen || !data) return null
 
@@ -135,6 +157,7 @@ export function BillPreviewModal({
 
   // Render the invoice canvas to a PNG blob
   const generatePngBlob = async (): Promise<Blob> => {
+    if (!accountReady) throw new Error('Customer dues are still loading. Please reopen the bill if they do not load.')
     if (pngCache.current) return pngCache.current
     if (!invoiceRef.current) throw new Error('Invoice preview is not ready.')
     const blob = await toBlob(invoiceRef.current, PNG_OPTIONS)
@@ -195,10 +218,12 @@ export function BillPreviewModal({
   }
 
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label="Invoice preview" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col overflow-hidden max-h-[96vh] print:max-w-none print:shadow-none print:max-h-none print:rounded-none">
+    <div role="dialog" aria-modal="true" aria-label="Invoice preview"
+      onClick={event => { if (event.target === event.currentTarget) onClose() }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-slate-900/70 backdrop-blur-xs print:p-0 print:bg-white print:static">
+      <div className="bg-white sm:rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col overflow-hidden h-[100dvh] sm:h-auto max-h-[100dvh] sm:max-h-[96dvh] print:max-w-none print:shadow-none print:max-h-none print:h-auto print:rounded-none">
         {/* Modal Header Bar (Hidden during print) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-200 bg-slate-50 print:hidden">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 border-b border-slate-200 bg-slate-50 print:hidden">
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               {data.cancelledAt ? (
@@ -220,12 +245,12 @@ export function BillPreviewModal({
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 max-sm:[&>button]:text-xs max-sm:[&>button]:px-2">
             {/* Download PNG Button */}
             <Button
               variant="outline"
               onClick={handleDownloadPng}
-              disabled={isGeneratingPng}
+              disabled={isGeneratingPng || !accountReady}
               className="flex items-center gap-2 border-slate-300 text-slate-700 hover:bg-slate-100"
             >
               {isGeneratingPng ? (
@@ -239,7 +264,7 @@ export function BillPreviewModal({
             {/* WhatsApp Share Button */}
             <Button
               onClick={handleWhatsAppShare}
-              disabled={isGeneratingPng}
+              disabled={isGeneratingPng || !accountReady}
               className="bg-[#25D366] hover:bg-[#20ba59] text-white flex items-center gap-2 shadow-xs"
             >
               <MessageCircle className="w-4 h-4 fill-white text-white stroke-none" />
@@ -249,6 +274,7 @@ export function BillPreviewModal({
             {/* Print Button */}
             <Button
               onClick={handlePrint}
+              disabled={!accountReady}
               className="bg-[#002855] hover:bg-[#001e40] text-white flex items-center gap-2 shadow-xs"
             >
               <Printer className="w-4 h-4" />
@@ -269,18 +295,18 @@ export function BillPreviewModal({
         {exportError && <p role="alert" className="p-3 text-red-700 bg-red-50 print:hidden">{exportError}</p>}
         {shareNotice && <p role="status" className="p-3 text-emerald-800 bg-emerald-50 font-medium print:hidden">{shareNotice}</p>}
         {/* Modal Scrollable Canvas Container */}
-        <div className="p-6 bg-slate-100 overflow-auto print:p-0 print:bg-white">
-          <div className="bg-white shadow-lg w-max mx-auto print:w-full print:shadow-none">
-            <ShopInvoiceTemplate ref={invoiceRef} data={data} settings={settings} />
+        <div className="invoice-preview-body p-2 sm:p-6 bg-slate-100 overflow-auto print:p-0 print:bg-white">
+          <div className="invoice-preview-paper print:w-full print:shadow-none">
+            {accountReady && invoiceData ? <ShopInvoiceTemplate ref={invoiceRef} data={invoiceData} settings={settings} /> : <p className="p-6 text-slate-600">Loading customer dues…</p>}
           </div>
         </div>
 
         {/* Modal Footer Controls (Hidden during print) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-3 border-t border-slate-200 bg-white print:hidden">
+        <div className="invoice-preview-footer flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 border-t border-slate-200 bg-white print:hidden">
           <p className="text-xs text-slate-500">
-            WhatsApp shares the invoice image only. Paste it in the chat with Ctrl+V, then Send.
+            On mobile, choose WhatsApp from Share. On computer, paste the copied image with Ctrl+V.
           </p>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 max-sm:[&>button]:text-xs max-sm:[&>button]:px-2">
             {(() => {
               const isPaid = (data.remainingCredit || 0) <= 0 || !!data.cancelledAt
               return (

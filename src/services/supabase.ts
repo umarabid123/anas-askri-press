@@ -1,61 +1,20 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-
+// Browser requests go through the local server; private cloud keys never enter Vite.
 const rawUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const SUPABASE_URL = rawUrl ? rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '') : undefined
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-
-let supabaseInstance: SupabaseClient | null = null
-
-/**
- * Checks if valid Supabase environment variables are provided
- */
-export function isSupabaseConfigured(): boolean {
-  return (
-    typeof SUPABASE_URL === 'string' &&
-    SUPABASE_URL.trim().length > 0 &&
-    typeof SUPABASE_ANON_KEY === 'string' &&
-    SUPABASE_ANON_KEY.trim().length > 0 &&
-    !SUPABASE_URL.includes('your-') && !SUPABASE_ANON_KEY.includes('your-')
-  )
+export function isSupabaseConfigured(): boolean { return !!rawUrl?.trim() && !rawUrl.includes('your-') }
+async function cloudRequest<T>(route: string, body: object = {}): Promise<T> {
+  const native = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+  const base = native ? 'http://127.0.0.1:5175' : ''
+  const response = await fetch(base + '/api/cloud/' + route, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(25000),
+  })
+  const result = await response.json().catch(() => null)
+  if (!response.ok) throw new Error(result?.error || 'Cloud connection is unavailable. Records remain saved locally.')
+  return result as T
 }
-
-/**
- * Gets or initializes the Supabase client singleton.
- * Returns null if Supabase is unconfigured (graceful offline-first operation).
- */
-export function getSupabaseClient(): SupabaseClient | null {
-  if (!isSupabaseConfigured()) {
-    return null
-  }
-
-  if (!supabaseInstance) {
-    try {
-      supabaseInstance = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-        },
-      })
-    } catch (err) {
-      console.warn('Failed to initialize Supabase client:', err)
-      return null
-    }
-  }
-
-  return supabaseInstance
-}
-
-/**
- * Actively tests connectivity to the Supabase endpoint
- */
+export async function syncCloudChanges(changes: unknown[]): Promise<void> { await cloudRequest('sync', { changes }) }
+export function exportCloudRecords(): Promise<unknown> { return cloudRequest('export') }
 export async function checkSupabaseConnection(): Promise<boolean> {
-  const client = getSupabaseClient()
-  if (!client) return false
-
-  try {
-    const { error } = await client.from('business_settings').select('id').limit(1)
-    return !error
-  } catch {
-    return false
-  }
+  if (!isSupabaseConfigured()) return false
+  try { await cloudRequest('check'); return true } catch { return false }
 }

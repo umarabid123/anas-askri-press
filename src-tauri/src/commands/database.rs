@@ -395,8 +395,8 @@ fn create_sale_in_transaction(mut sale: CreateSaleDto, tx: &rusqlite::Transactio
         let task_total: f64 = item.mazdoori_tasks.iter().map(|t| t.amount).sum();
         if item.mazdoori_tasks.iter().any(|t| t.title.trim().is_empty() || !t.amount.is_finite() || t.amount <= 0.0) || (!item.mazdoori_tasks.is_empty() && (task_total-item.mazdoori).abs()>0.01) { return Err("Invalid labor breakdown".into()); }
         item.item_name = item.item_name.trim().to_string();
-        item.amount = ((item.quantity*item.rate + item.mazdoori)*100.0).round()/100.0;
-        goods += item.amount-item.mazdoori; labor += item.mazdoori; gross += item.amount;
+        item.amount = ((item.quantity*item.rate)*100.0).round()/100.0;
+        goods += item.amount; labor += item.mazdoori; gross += item.amount;
     }
     sale.subtotal = (goods*100.0).round()/100.0; sale.total_mazdoori = (labor*100.0).round()/100.0;
     sale.total = ((gross-sale.discount)*100.0).round()/100.0;
@@ -1432,11 +1432,22 @@ pub fn update_sale(sale_id: String, sale: CreateSaleDto, state: State<DbState>) 
 }
 
 fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusqlite::Transaction<'_>) -> Result<String, String> {
+    let cancelled: Option<String> = tx.query_row("SELECT cancelled_at FROM sales WHERE id=?1", params![sale_id], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if cancelled.is_some() { return Err("A cancelled bill cannot be edited. Start a new bill.".into()); }
     let (old_number, old_customer_id, old_total, old_paid, old_credit): (String, Option<String>, f64, f64, f64) = tx.query_row(
         "SELECT invoice_number, customer_id, total, paid_amount, remaining_credit FROM sales WHERE id = ?1",
         params![sale_id],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
     ).optional().map_err(|e| e.to_string())?.ok_or("Bill not found")?;
+
+    if old_customer_id.as_deref().filter(|id| !id.is_empty()) != sale.customer_id.as_deref().filter(|id| !id.is_empty()) { return Err("The customer cannot be changed on a saved bill.".into()); }
+    let receipt_note = format!("Payment for invoice {}", old_number);
+    let initial_receipt: Option<String> = tx.query_row("SELECT id FROM payments WHERE sale_id=?1 AND (notes=?2 OR id=?3) LIMIT 1", params![sale_id, receipt_note, format!("receipt-{}", sale_id)], |r| r.get(0)).optional().map_err(|e| e.to_string())?;
+    let later_paid: f64 = tx.query_row("SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=?1 AND id<>?2", params![sale_id, initial_receipt.as_deref().unwrap_or("")], |r| r.get(0)).map_err(|e| e.to_string())?;
+    if sale.paid_amount < later_paid { return Err("Later payments are already recorded for this bill. Payment Received cannot be less than those payments.".into()); }
+    let corrected_initial_paid = ((sale.paid_amount - later_paid) * 100.0).round() / 100.0;
+    let original_ledger: Option<(i64, f64)> = tx.query_row("SELECT rowid,credit FROM customer_ledger WHERE sale_id=?1 AND description=?2 LIMIT 1", params![sale_id, format!("Invoice #{}", old_number)], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e| e.to_string())?;
+    if old_customer_id.as_deref().is_some_and(|id| !id.is_empty()) && original_ledger.is_none() { return Err("This bill is missing its customer ledger entry. Restore the record before editing.".into()); }
 
     if sale.items.is_empty() || !sale.discount.is_finite() || sale.discount < 0.0 || !sale.paid_amount.is_finite() || sale.paid_amount < 0.0 || !["cash", "bank"].contains(&sale.payment_method.as_str()) {
         return Err("Invalid bill or payment".into());
@@ -1454,8 +1465,8 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
             return Err("Invalid labor breakdown".into());
         }
         item.item_name = item.item_name.trim().to_string();
-        item.amount = ((item.quantity * item.rate + item.mazdoori) * 100.0).round() / 100.0;
-        goods += item.amount - item.mazdoori;
+        item.amount = ((item.quantity * item.rate) * 100.0).round() / 100.0;
+        goods += item.amount;
         labor += item.mazdoori;
         gross += item.amount;
     }
@@ -1631,13 +1642,9 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
     }
 
     // 5. Update Payment
-    let has_payment: bool = tx.query_row(
-        "SELECT COUNT(*) FROM payments WHERE sale_id = ?1",
-        params![sale_id],
-        |r| r.get::<_, i64>(0),
-    ).map(|c| c > 0).unwrap_or(false);
+    let has_payment = initial_receipt.is_some();
 
-    if sale.paid_amount > 0.0 {
+    if corrected_initial_paid > 0.0 {
         if has_payment {
             tx.execute(
                 "UPDATE payments
@@ -1646,32 +1653,32 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
                      payment_method = ?3,
                      notes = ?4,
                      sync_status = 'pending'
-                 WHERE sale_id = ?5",
+                 WHERE id = ?5",
                 params![
-                    sale.paid_amount,
+                    corrected_initial_paid,
                     sale.customer_id,
                     sale.payment_method,
                     format!("Payment for invoice {}", old_number),
-                    sale_id,
+                    initial_receipt,
                 ],
             ).map_err(|e| e.to_string())?;
         } else {
             let payment_id = Uuid::new_v4().to_string();
             tx.execute(
-                "INSERT INTO payments (id, customer_id, sale_id, amount, payment_method, notes, sync_status)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending')",
+                "INSERT INTO payments (id, customer_id, sale_id, amount, payment_method, notes, payment_date, sync_status)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT created_at FROM sales WHERE id=?3), 'pending')",
                 params![
                     payment_id,
                     sale.customer_id,
                     sale_id,
-                    sale.paid_amount,
+                    corrected_initial_paid,
                     sale.payment_method,
                     format!("Payment for invoice {}", old_number),
                 ],
             ).map_err(|e| e.to_string())?;
         }
     } else if has_payment {
-        tx.execute("DELETE FROM payments WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM payments WHERE id = ?1", params![initial_receipt]).map_err(|e| e.to_string())?;
     }
 
     // 6. Customer Totals & Ledger
@@ -1735,15 +1742,17 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
         ).map(|c| c > 0).unwrap_or(false);
 
         if has_ledger {
+            let (ledger_rowid, original_credit) = original_ledger.ok_or("Missing invoice ledger")?;
+            let delta = sale.total - old_total - (corrected_initial_paid - original_credit);
+            tx.execute("UPDATE customer_ledger SET balance=ROUND(balance+?1,2),sync_status='pending' WHERE customer_id=?2 AND rowid>=?3", params![delta,cust_id,ledger_rowid]).map_err(|e| e.to_string())?;
             tx.execute(
                 "UPDATE customer_ledger
                  SET debit = ?1,
                      credit = ?2,
-                     balance = ?3,
-                     description = ?4,
+                     description = ?3,
                      sync_status = 'pending'
-                 WHERE sale_id = ?5",
-                params![sale.total, sale.paid_amount, current_bal, format!("Invoice #{}", old_number), sale_id],
+                 WHERE rowid = ?4",
+                params![sale.total, corrected_initial_paid, format!("Invoice #{}", old_number), ledger_rowid],
             ).map_err(|e| e.to_string())?;
         } else {
             let ledger_id = Uuid::new_v4().to_string();
@@ -1873,7 +1882,7 @@ mod invoice_edit_tests {
             params![id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         ).unwrap();
-        assert_eq!(total, 350.0);
+        assert_eq!(total, 300.0);
         assert_eq!(date, "2025-01-02T09:00:00Z");
         assert!(cancelled.is_none());
         assert_eq!(number, "ARKI-1001");
@@ -1882,7 +1891,7 @@ mod invoice_edit_tests {
             [],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         ).unwrap();
-        assert_eq!((purchase, paid, balance), (350.0, 100.0, 250.0));
+        assert_eq!((purchase, paid, balance), (300.0, 100.0, 200.0));
         let worker_balance: f64 = conn.query_row(
             "SELECT balance FROM mazdoors WHERE name='Rashid'",
             [],
@@ -1891,6 +1900,23 @@ mod invoice_edit_tests {
         assert_eq!(worker_balance, 50.0);
         let count: i64 = conn.query_row("SELECT COUNT(*) FROM sales", [], |r| r.get(0)).unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn correcting_initial_payment_to_zero_updates_dues_and_receipt() {
+        let mut conn = setup();
+        let id = save_original(&mut conn);
+        let mut correction = bill(100.0);
+        correction.paid_amount = 0.0;
+        let tx = conn.transaction().unwrap();
+        update_sale_in_transaction(&id, correction, &tx).unwrap();
+        tx.commit().unwrap();
+        let receipt_count: i64 = conn.query_row("SELECT COUNT(*) FROM payments WHERE sale_id=?1", params![id], |r| r.get(0)).unwrap();
+        assert_eq!(receipt_count, 0);
+        let (paid, balance): (f64, f64) = conn.query_row("SELECT total_paid,balance FROM customers WHERE id='qa'", [], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!((paid,balance),(0.0,200.0));
+        let (credit, ledger_balance): (f64, f64) = conn.query_row("SELECT credit,balance FROM customer_ledger WHERE sale_id=?1", params![id], |r| Ok((r.get(0)?,r.get(1)?))).unwrap();
+        assert_eq!((credit,ledger_balance),(0.0,200.0));
     }
 }
 

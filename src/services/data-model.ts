@@ -41,9 +41,12 @@ export function validateBackup(input: unknown): Backup {
     const lines = data.tables.sale_items.filter(i => i.sale_id === sale.id)
     const total = lines.reduce((sum, i) => sum + Number(i.amount), 0) - Number(sale.discount)
     if (!sale.invoice_number || !lines.length || Number(sale.discount) < 0 || Number(sale.total) <= 0 || Number(sale.paid_amount) < 0 || Math.abs(total - Number(sale.total)) > 0.02 || Number(sale.paid_amount) > Number(sale.total) || Math.abs(Number(sale.total) - Number(sale.paid_amount) - Number(sale.remaining_credit)) > 0.02 || !['cash', 'bank'].includes(String(sale.payment_method))) throw new Error(`Invoice ${sale.invoice_number} does not balance.`)
-    if (Math.abs(lines.reduce((sum, item) => sum + Number(item.mazdoori), 0) - Number(sale.total_mazdoori)) > 0.02 || Math.abs(lines.reduce((sum, item) => sum + Number(item.amount) - Number(item.mazdoori), 0) - Number(sale.subtotal)) > 0.02) throw new Error('Invoice subtotal or labour does not balance.')
+    const goods = lines.reduce((sum, item) => sum + Math.round(Number(item.quantity) * Number(item.rate) * 100) / 100, 0)
+    const legacyGoods = lines.reduce((sum, item) => sum + Number(item.amount) - Number(item.mazdoori), 0)
+    if (Math.abs(lines.reduce((sum, item) => sum + Number(item.mazdoori), 0) - Number(sale.total_mazdoori)) > 0.02 || (Math.abs(goods - Number(sale.subtotal)) > 0.02 && Math.abs(legacyGoods - Number(sale.subtotal)) > 0.02)) throw new Error('Invoice subtotal or labour does not balance.')
   }
-  for (const item of data.tables.sale_items) if (!item.item_name || Number(item.quantity) <= 0 || Number(item.rate) < 0 || Number(item.mazdoori) < 0 || Math.abs(Number(item.quantity) * Number(item.rate) + Number(item.mazdoori) - Number(item.amount)) > 0.02) throw new Error('Invalid invoice item.')
+  // Accept the former labour-inclusive line amounts without rewriting old bills.
+  for (const item of data.tables.sale_items) if (!item.item_name || Number(item.quantity) <= 0 || Number(item.rate) < 0 || Number(item.mazdoori) < 0 || (Math.abs(Number(item.quantity) * Number(item.rate) - Number(item.amount)) > 0.02 && Math.abs(Number(item.quantity) * Number(item.rate) + Number(item.mazdoori) - Number(item.amount)) > 0.02)) throw new Error('Invalid invoice item.')
   for (const payment of data.tables.payments) if (Number(payment.amount) <= 0 || !payment.payment_date || !['cash', 'bank'].includes(String(payment.payment_method))) throw new Error('Invalid receipt.')
   for (const task of data.tables.sale_item_mazdoori_tasks) if (!task.title || Number(task.amount) <= 0) throw new Error('Invalid labour task.')
   for (const expense of data.tables.expenses) if (!expense.category || !isValidDateKey(String(expense.expense_date)) || Number(expense.amount) <= 0 || !['cash', 'bank'].includes(String(expense.payment_method))) throw new Error('Invalid expense.')
