@@ -105,9 +105,9 @@ export function MazdooriPage() {
     </header>
     {view === 'weeks' ? <WeeklyMazdooriRecords sales={sales} isLoading={isLoading} error={error} onViewBill={openBill} /> : <section className="rounded-xl border border-slate-200 bg-white">
       <div className="space-y-4 p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-row gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-1" role="group" aria-label="Date filters">{filters.map(filter => <button key={filter.value} type="button" aria-pressed={datePreset === filter.value} onClick={() => setDatePreset(filter.value)} className={cn('rounded-md px-3 py-2 text-sm cursor-pointer focus-visible:outline-2 focus-visible:outline-slate-500', datePreset === filter.value ? 'bg-blue-50 font-semibold text-blue-800 ring-1 ring-blue-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800')}>{filter.label}</button>)}</div>
-          <div className="relative w-full lg:w-80"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" aria-label="Search mazdoori records" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search customer, bill or item" className={controlClass + ' w-full pl-9'} /></div>
+          <div className="relative w-80 shrink-0"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="search" aria-label="Search mazdoori records" value={searchTerm} onChange={event => setSearchTerm(event.target.value)} placeholder="Search customer, bill or item" className={controlClass + ' w-full pl-9'} /></div>
         </div>
         {datePreset === 'custom' && <div className="flex flex-wrap items-end gap-3">
           <label className="space-y-1 text-xs font-medium text-slate-600"><span className="block">From</span><input type="date" value={fromDate} onChange={event => setFromDate(event.target.value)} className={controlClass} /></label>
@@ -115,7 +115,7 @@ export function MazdooriPage() {
           {(fromDate || toDate) && <button type="button" onClick={() => { setFromDate(''); setToDate('') }} className="px-2 py-2 text-sm text-slate-600 underline underline-offset-4 cursor-pointer">Clear dates</button>}
         </div>}
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500"><p>{periodDates}{searchTerm.trim() ? ' · Search results' : ''}</p>{datePreset === 'weekly' && <p>Saturday–Thursday · Friday off</p>}</div>
-        <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3" aria-live="polite">
+        <dl className="grid grid-cols-3 gap-3" aria-live="polite">
           <div className="rounded-lg border border-teal-200 bg-teal-50 p-4"><dt className="text-xs font-semibold text-teal-800">{period.label}</dt><dd className="mt-1 text-2xl font-bold tracking-tight text-teal-900">{formatPKR(summary.total)}</dd></div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><dt className="text-xs font-semibold text-slate-600">Total weight</dt><dd className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{(totals?.totalWeight ?? 0).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</dd><p className="mt-1 text-xs text-slate-500">From bill Qty/Kg</p></div>
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4"><dt className="text-xs font-semibold text-slate-600">Active records</dt><dd className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{summary.bills}</dd><p className="mt-1 text-xs text-slate-500">Across {summary.days} {summary.days === 1 ? 'day' : 'days'}</p></div>

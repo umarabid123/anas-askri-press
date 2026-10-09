@@ -316,9 +316,9 @@ export function NewBillPage() {
   }
 
   return (
-    <div className="flex flex-col xl:flex-row gap-5 items-start pb-5">
+    <div className="flex flex-row gap-5 items-start pb-5">
       {/* Left Column: Bill Entry Form */}
-      <div className="w-full flex-1 min-w-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
+      <div className="flex-1 min-w-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
         <div className="space-y-4">
           {/* Header Title & Subtitle */}
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -461,16 +461,16 @@ export function NewBillPage() {
                     Qty/Kg <span className="text-red-500 font-bold">*</span>
                   </th>
                   <th className="py-2.5 px-2 w-24 text-center">
-                    Rate (Rs) <span className="text-red-500 font-bold">*</span>
+                    Rate <span className="text-red-500 font-bold">*</span>
                   </th>
                   <th className="py-2.5 px-2 w-28 text-center">
                     <span className="flex items-center justify-center gap-1">
                       <HardHat className="w-3.5 h-3.5 text-teal-700 stroke-[2.2]" />
-                      <span>Mazdoori (Rs)</span>
+                      <span>Mazdoori</span>
                       <span className="text-red-500 font-bold">*</span>
                     </span>
                   </th>
-                  <th className="py-2.5 px-3 w-28 text-center">Amount (Rs)</th>
+                  <th className="py-2.5 px-3 w-28 text-center">Amount</th>
                   <th className="py-2.5 px-2 w-8 text-center"></th>
                 </tr>
               </thead>
@@ -604,7 +604,7 @@ export function NewBillPage() {
       </div>
 
       {/* Right Column: Bill Summary */}
-      <div className="w-full xl:w-[380px] shrink-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 xl:sticky xl:top-4">
+      <div className="w-[360px] xl:w-[380px] shrink-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 sticky top-4">
         <div className="space-y-4">
           <h2 className="text-lg font-semibold text-slate-900">Bill Summary</h2>
 
