@@ -505,7 +505,8 @@ export function NewBillPage() {
                           type="number"
                           min="0.01"
                           step="any"
-                          value={item.quantity}
+                          value={item.quantity || ''}
+                          placeholder="0"
                           data-bill-cell={`${index}-1`}
                           onKeyDown={(e) => handleCellKeyDown(e, index, 1)}
                           onChange={(e) =>

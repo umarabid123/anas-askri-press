@@ -43,7 +43,7 @@ interface CartState {
 }
 
 const createInitialItems = (): SaleItem[] => [
-  { id: crypto.randomUUID(), itemName: '', quantity: 1, rate: 0, mazdoori: 0, mazdooriTasks: [], amount: 0 },
+  { id: crypto.randomUUID(), itemName: '', quantity: 0, rate: 0, mazdoori: 0, mazdooriTasks: [], amount: 0 },
 ]
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -64,7 +64,7 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addItem: (item) =>
     set((state) => {
-      const quantity = item?.quantity ?? 1
+      const quantity = item?.quantity ?? 0
       const rate = item?.rate ?? 0
       const mazdoori = item?.mazdoori ?? 0
       const newItem: SaleItem = {
@@ -159,17 +159,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       draftId: crypto.randomUUID(),
       editingSale: null,
       customer: null,
-      items: [
-        {
-          id: crypto.randomUUID(),
-          itemName: '',
-          quantity: 1,
-          rate: 0,
-          mazdoori: 0,
-          mazdooriTasks: [],
-          amount: 0,
-        },
-      ],
+      items: createInitialItems(),
       discount: 0,
       paidAmount: 0,
       paymentMethod: 'cash',
