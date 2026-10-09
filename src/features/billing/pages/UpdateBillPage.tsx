@@ -197,13 +197,13 @@ export function UpdateBillPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold text-slate-900 leading-tight">Update Bill</h1>
+            <h1 className="text-xl font-semibold text-slate-900 leading-tight">All Bills</h1>
             <span className="text-xs font-semibold bg-blue-100 text-blue-700 px-2.5 py-0.5 rounded-full">
               {filteredSales.length} {filteredSales.length === 1 ? 'Bill' : 'Bills'}
             </span>
           </div>
           <p className="text-[13px] text-slate-500 mt-0.5">
-            Search any saved bill by bill number or customer to edit and update details.
+            Search any saved bill by bill number or customer to view details or update.
           </p>
         </div>
 
@@ -231,8 +231,8 @@ export function UpdateBillPage() {
         </div>
       </div>
 
-      {/* Metric Cards Row - 2-column Grid (Total Active Bills card removed) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {/* Metric Cards Row - 2-column Grid (always in one row) */}
+      <div className="grid grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-slate-200 p-4">
           <p className="text-xs font-medium text-slate-500">Total Sales Value</p>
           <p className="text-xl font-bold text-slate-900 mt-1">{formatPKR(totalSalesAmount)}</p>

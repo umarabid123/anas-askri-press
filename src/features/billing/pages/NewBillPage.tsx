@@ -1,11 +1,9 @@
 import { getBusinessSettings, getCustomerLedger } from '@/services/sqlite.service'
 import { printDocument } from '@/utils/printing'
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   ChevronDown,
   FileCheck,
-  FileEdit,
   HardHat,
   Landmark,
   Loader2,
@@ -16,7 +14,6 @@ import {
   User,
   X,
 } from 'lucide-react'
-import { ROUTES } from '@/constants/routes'
 import { PAYMENT_METHODS } from '@/constants/business'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -67,7 +64,6 @@ export function NewBillPage() {
   } = useCartStore()
 
   const { customers, addCustomer } = useCustomers()
-  const navigate = useNavigate()
 
   // Customer dropdown search state
   const [customerSearch, setCustomerSearch] = useState('')
@@ -329,16 +325,6 @@ export function NewBillPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate(ROUTES.BILLS)}
-                className="flex items-center gap-1.5 text-xs h-9"
-                title="Search and update previous bills"
-              >
-                <FileEdit className="w-3.5 h-3.5 text-blue-600" />
-                <span>Update Bill</span>
-              </Button>
               {customer && (
                 <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl">
                   <User className="w-4 h-4 text-blue-600" />
@@ -467,7 +453,6 @@ export function NewBillPage() {
                     <span className="flex items-center justify-center gap-1">
                       <HardHat className="w-3.5 h-3.5 text-teal-700 stroke-[2.2]" />
                       <span>Mazdoori</span>
-                      <span className="text-red-500 font-bold">*</span>
                     </span>
                   </th>
                   <th className="py-2.5 px-3 w-28 text-center">Amount</th>

@@ -20,7 +20,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { name: 'New Bill', to: ROUTES.NEW_BILL, icon: FileText },
-  { name: 'All Records', to: ROUTES.BILLS, icon: FileText },
+  { name: 'All Bills', to: ROUTES.BILLS, icon: FileText },
   { name: 'Customers', to: ROUTES.CUSTOMERS, icon: Users },
   { name: 'Mazdoori', to: ROUTES.MAZDOORI, icon: UserCheck },
   // { name: 'Reports', to: ROUTES.REPORTS, icon: BarChart2 },
