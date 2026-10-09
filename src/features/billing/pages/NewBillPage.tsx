@@ -1,4 +1,4 @@
-import { getBusinessSettings } from '@/services/sqlite.service'
+import { getBusinessSettings, getCustomerLedger } from '@/services/sqlite.service'
 import { printDocument } from '@/utils/printing'
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -24,13 +24,14 @@ import { useCartStore } from '@/stores/cart.store'
 import { toast } from '@/stores/toast.store'
 import { useCustomers } from '@/hooks/useCustomers'
 import { createSale, updateSale, getSales } from '@/services/sqlite.service'
-import { saleToInvoiceData } from '../invoice-data'
+import { saleToInvoiceData, previousInvoiceBalance } from '../invoice-data'
 import { editBlockReason, startNewBill } from '../bill-actions'
 import { prepareBill } from '@/utils/billing'
 import { formatPKR } from '@/utils/financial'
 import { cn } from '@/utils/cn'
 import { AddCustomerModal } from '@/features/customers/components/AddCustomerModal'
 import { BillPreviewModal } from '../components/BillPreviewModal'
+import { ProductNameInput } from '../components/ProductNameInput'
 import type { ShopInvoiceData } from '../components/ShopInvoiceTemplate'
 import type { Customer } from '@/types'
 
@@ -61,7 +62,6 @@ export function NewBillPage() {
     setPaymentMethod,
     resetCart,
     getGoodsSubtotal,
-    getTotalMazdoori,
     getTotal,
     getCredit,
   } = useCartStore()
@@ -132,7 +132,6 @@ export function NewBillPage() {
 
   const activeItem = items.find((it) => it.id === activeMazdooriItemId)
   const goodsSubtotal = getGoodsSubtotal()
-  const totalMazdoori = getTotalMazdoori()
   const total = getTotal()
   const credit = getCredit()
   const totalItemsCount = items.length
@@ -229,6 +228,7 @@ export function NewBillPage() {
       const invoiceNumber = editingSale ? await updateSale(editingSale.id, input) : await createSale(input)
 
       const invoiceData: ShopInvoiceData = {
+        customerId: customer?.id || null,
         invoiceNumber,
         date: new Date().toISOString(),
         customer: customer || null,
@@ -246,12 +246,17 @@ export function NewBillPage() {
       }
 
       const saved = (await getSales().catch(() => [])).find(sale => sale.invoiceNumber === invoiceNumber)
+      const preview = saved ? saleToInvoiceData(saved, customer) : invoiceData
+      if (customer?.id) {
+        try { preview.previousBalance = previousInvoiceBalance(preview, await getCustomerLedger(customer.id)) }
+        catch (err) { toast.error('Bill saved, but previous dues could not be loaded: ' + String(err)) }
+      }
       resetCart()
-      setPreviewInvoiceData(saved ? saleToInvoiceData(saved, customer) : invoiceData)
+      setPreviewInvoiceData(preview)
       setIsPreviewOpen(true)
       toast.success(`Bill #${invoiceNumber} ${editingSale ? 'updated' : 'saved'}.`)
 
-      if (andThen === 'print') {
+      if (andThen === 'print' && (!customer?.id || preview.previousBalance !== undefined)) {
         setTimeout(() => { getBusinessSettings().then(settings => printDocument('shop-invoice-canvas', settings.receiptPaperSize)).catch(err => setErrorMessage(String(err))) }, 300)
       }
 
@@ -311,19 +316,19 @@ export function NewBillPage() {
   }
 
   return (
-    <div className="flex flex-row gap-5 items-stretch min-h-full">
+    <div className="flex flex-col xl:flex-row gap-5 items-start pb-5">
       {/* Left Column: Bill Entry Form */}
-      <div className="flex-1 min-w-0 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
+      <div className="w-full flex-1 min-w-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5">
         <div className="space-y-4">
           {/* Header Title & Subtitle */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h1 className="text-[22px] font-bold text-slate-900 leading-tight">{editReason ? 'Bill Cannot Be Edited' : editingSale ? 'Edit Bill' : 'New Bill'}</h1>
+              <h1 className="text-xl font-semibold text-slate-900 leading-tight">{editReason ? 'Bill Cannot Be Edited' : editingSale ? 'Edit Bill' : 'New Bill'}</h1>
               <p className="text-[13px] text-slate-500 mt-0.5">
                 {editingSale ? `Editing bill #${editingSale.invoiceNumber}. Change the items, rates, or mazdoori below.` : 'Add the work or items, enter payment received, then save the bill.'}
               </p>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <Button
                 type="button"
                 variant="outline"
@@ -335,7 +340,7 @@ export function NewBillPage() {
                 <span>Update Bill</span>
               </Button>
               {customer && (
-                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl">
+                <div className="flex flex-wrap items-center gap-2 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl">
                   <User className="w-4 h-4 text-blue-600" />
                   <span className="text-xs font-bold text-blue-900">{customer.name}</span>
                   <span className="text-xs text-blue-600">({customer.mobile})</span>
@@ -356,7 +361,7 @@ export function NewBillPage() {
           {editingSale && (
             <div role={editReason ? 'alert' : 'status'} className={`p-3 text-sm border rounded-xl ${editReason ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-blue-50 text-blue-900 border-blue-200'}`}>
               <p className="font-semibold">{checkingBill ? 'Checking this bill...' : editReason || 'You can edit this bill and save your changes.'}</p>
-              <p className="mt-1">{editReason ? 'Your entered items are still here. Use them in a new bill, or start with a blank bill.' : 'Save Changes keeps the previous copy in history and creates an updated bill. The customer and payment already received stay the same.'}</p>
+              <p className="mt-1">{editReason ? 'Your entered items are still here. Use them in a new bill, or start with a blank bill.' : 'Save Changes updates this bill. You can correct Payment Received if it was entered wrong. The customer stays the same.'}</p>
               <div className="flex flex-wrap gap-3 mt-3">
                 <Button type="button" size="sm" disabled={isSaving} onClick={useItemsAsNewBill}>Use Items as New Bill</Button>
                 <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { startNewBill() }}>Start Blank Bill</Button>
@@ -375,8 +380,8 @@ export function NewBillPage() {
             <label className="block text-[13px] font-semibold text-slate-800 mb-1.5">
               Customer <span className="font-normal text-slate-500">(Choose a customer if any amount is unpaid)</span>
             </label>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 relative" ref={dropdownRef}>
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
+              <div className="w-full min-w-0 flex-1 basis-64 relative" ref={dropdownRef}>
                 <div className="relative flex items-center">
                   <div className="absolute left-3 flex items-center pointer-events-none text-slate-400">
                     <User className="w-4 h-4 stroke-[2.2]" />
@@ -411,7 +416,7 @@ export function NewBillPage() {
                           key={cust.id}
                           type="button"
                           onClick={() => handleSelectCustomer(cust)}
-                          className="w-full text-left px-3.5 py-2.5 text-xs hover:bg-slate-50 border-b border-slate-100 flex items-center justify-between transition-colors"
+                          className="w-full text-left px-3.5 py-2.5 text-xs hover:bg-slate-50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 transition-colors"
                         >
                           <div>
                             <p className="font-bold text-slate-900">{cust.name}</p>
@@ -435,7 +440,7 @@ export function NewBillPage() {
               <button
                 type="button"
                 onClick={() => setIsAddCustomerOpen(true)}
-                className="h-10 px-4 bg-[#1877F2] hover:bg-blue-600 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-xs transition-colors shrink-0 cursor-pointer"
+                className="h-10 px-4 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-500"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
                 <span>New Customer</span>
@@ -447,10 +452,10 @@ export function NewBillPage() {
           <div className="border border-slate-200/80 rounded-xl overflow-x-auto">
             <table className="w-full min-w-[550px] text-left text-sm border-collapse">
               <thead>
-                <tr className="bg-[#F8FAFC] border-b border-slate-200 text-[12px] font-semibold text-slate-700">
+                <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                   <th className="py-2.5 px-3 w-8 text-center">#</th>
                   <th className="py-2.5 px-3">
-                    Item / Description <span className="text-red-500 font-bold">*</span> <span className="font-normal text-slate-500 text-[11px]">(Product or service)</span>
+                    Product / Description <span className="text-red-500 font-bold">*</span> <span className="font-normal text-slate-500 text-[11px]">(Choose or type)</span>
                   </th>
                   <th className="py-2.5 px-2 w-20 text-center">
                     Qty/Kg <span className="text-red-500 font-bold">*</span>
@@ -460,7 +465,7 @@ export function NewBillPage() {
                   </th>
                   <th className="py-2.5 px-2 w-28 text-center">
                     <span className="flex items-center justify-center gap-1">
-                      <HardHat className="w-3.5 h-3.5 text-purple-600 stroke-[2.2]" />
+                      <HardHat className="w-3.5 h-3.5 text-teal-700 stroke-[2.2]" />
                       <span>Mazdoori (Rs)</span>
                       <span className="text-red-500 font-bold">*</span>
                     </span>
@@ -484,19 +489,13 @@ export function NewBillPage() {
 
                       {/* Item Name */}
                       <td className="py-2.5 px-3">
-                        <input
-                          type="text"
+                        <ProductNameInput
                           value={item.itemName}
-                          data-bill-cell={`${index}-0`}
+                          cell={`${index}-0`}
+                          row={index + 1}
+                          invalid={isNameInvalid}
                           onKeyDown={(e) => handleCellKeyDown(e, index, 0)}
-                          onChange={(e) => updateItem(item.id, { itemName: e.target.value })}
-                          placeholder="e.g. Chadar 8x4 / Laser Cut Grill"
-                          className={cn(
-                            'w-full h-8 px-3 text-sm rounded-lg bg-white focus:outline-none transition-colors',
-                            isNameInvalid
-                              ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900'
-                              : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
-                          )}
+                          onChange={(itemName) => updateItem(item.id, { itemName })}
                         />
                       </td>
 
@@ -513,10 +512,10 @@ export function NewBillPage() {
                             updateItem(item.id, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })
                           }
                           className={cn(
-                            'w-full h-8 text-center text-sm rounded-lg bg-white focus:outline-none transition-colors',
+                            'w-full h-9 text-center tabular-nums text-sm rounded-md bg-white focus:outline-none transition-colors',
                             isQtyInvalid
                               ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
-                              : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                              : 'border border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                           )}
                         />
                       </td>
@@ -535,10 +534,10 @@ export function NewBillPage() {
                             updateItem(item.id, { rate: Math.max(0, Number(e.target.value) || 0) })
                           }
                           className={cn(
-                            'w-full h-8 text-center text-sm rounded-lg bg-white focus:outline-none transition-colors',
+                            'w-full h-9 text-center tabular-nums text-sm rounded-md bg-white focus:outline-none transition-colors',
                             isRateInvalid
                               ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
-                              : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                              : 'border border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
                           )}
                         />
                       </td>
@@ -549,7 +548,7 @@ export function NewBillPage() {
                           type="number"
                           min="0"
                           step="any"
-                          value={item.mazdoori === 0 ? '0' : item.mazdoori || ''}
+                          value={item.mazdoori || ''}
                           placeholder="0"
                           data-bill-cell={`${index}-3`}
                           onKeyDown={(e) => handleCellKeyDown(e, index, 3)}
@@ -558,11 +557,11 @@ export function NewBillPage() {
                             updateItem(item.id, { mazdoori: val })
                           }}
                           className={cn(
-                            'w-full h-8 text-center text-sm font-semibold border rounded-lg bg-white focus:outline-none focus:ring-1 transition-colors',
+                            'w-full h-9 text-center tabular-nums text-sm font-semibold border rounded-md bg-white focus:outline-none focus:ring-1 transition-colors',
                             isMazdooriInvalid
                               ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900'
                               : item.mazdoori > 0
-                                ? 'text-purple-700 border-purple-300 bg-purple-50/30 focus:border-purple-500 focus:ring-purple-500'
+                                ? 'text-teal-800 border-teal-300 bg-teal-50/40 focus:border-teal-500 focus:ring-teal-500'
                                 : 'text-slate-900 border-slate-200 focus:border-blue-500 focus:ring-blue-500'
                           )}
                         />
@@ -578,7 +577,7 @@ export function NewBillPage() {
                         <button
                           type="button"
                           onClick={() => removeItem(item.id)}
-                          className="text-red-500 hover:text-red-700 p-1 transition-colors cursor-pointer"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md p-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-red-400"
                           title="Delete item"
                         >
                           <Trash2 className="w-4 h-4 stroke-[2.2]" />
@@ -595,7 +594,7 @@ export function NewBillPage() {
           <button
             type="button"
             onClick={() => addItem()}
-            className="w-full py-2.5 bg-[#EAF2FD] hover:bg-blue-100 text-[#1877F2] font-semibold text-sm rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            className="w-full sm:w-auto px-4 py-2.5 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-800 font-semibold text-sm rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-500"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
             <span>Add Another Item</span>
@@ -604,51 +603,38 @@ export function NewBillPage() {
       </div>
 
       {/* Right Column: Bill Summary */}
-      <div className="w-[360px] xl:w-[400px] shrink-0 bg-white rounded-2xl border border-slate-200/80 p-6 flex flex-col justify-between shadow-2xs">
+      <div className="w-full xl:w-[380px] shrink-0 bg-white rounded-xl border border-slate-200 p-4 sm:p-5 xl:sticky xl:top-4">
         <div className="space-y-4">
-          <h2 className="text-[20px] font-bold text-slate-900">Bill Summary</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Bill Summary</h2>
 
           {/* Line Items */}
           <div className="space-y-3 pt-1 text-[14px]">
-            <div className="flex justify-between items-center text-slate-700">
+            <div className="flex flex-wrap justify-between items-center gap-3 text-slate-700">
               <span>Total Items</span>
               <span className="font-bold text-slate-900 text-base">{totalItemsCount}</span>
             </div>
 
-            <div className="flex justify-between items-center text-slate-700">
+            <div className="flex flex-wrap justify-between items-center gap-3 text-slate-700">
               <span>Goods Subtotal</span>
               <span className="font-semibold text-slate-900 text-[15px]">
                 Rs {goodsSubtotal.toLocaleString()}
               </span>
             </div>
 
-            {totalMazdoori > 0 && (
-              <div className="flex justify-between items-center text-purple-700 bg-purple-50/70 px-2.5 py-1.5 rounded-lg border border-purple-100">
-                <span className="flex items-center gap-1.5 font-medium text-xs">
-                  <HardHat className="w-3.5 h-3.5 stroke-[2]" />
-                  Total Mazdoori (Labor)
-                </span>
-                <span className="font-bold text-purple-700 text-sm">
-                  + Rs {totalMazdoori.toLocaleString()}
-                </span>
-              </div>
-            )}
-
-            <div className="flex justify-between items-center text-slate-900 pt-1 border-t border-slate-100">
+            <div className="flex justify-between items-center gap-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-900">
               <span className="font-bold">Total Amount</span>
               <span className="font-bold text-slate-900 text-[18px]">
                 Rs {total.toLocaleString()}
               </span>
             </div>
 
-            <div className="flex justify-between items-center text-slate-700">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap justify-between items-center gap-3 text-slate-700">
+              <div className="flex flex-wrap items-center gap-2">
                 <span>Payment Received</span>
                 <button
                   type="button"
                   onClick={() => setPaidAmount(total)}
-                  disabled={!!editingSale}
-                  className="text-[11px] text-blue-600 hover:underline font-semibold"
+                  className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800 hover:bg-blue-100 font-semibold cursor-pointer"
                 >
                   Paid in Full
                 </button>
@@ -658,17 +644,16 @@ export function NewBillPage() {
                   type="number"
                   min="0"
                   value={paidAmount || ''}
-                  disabled={!!editingSale}
                   placeholder="0"
                   onChange={(e) => setPaidAmount(Number(e.target.value) || 0)}
-                  className="w-full h-8 px-2.5 text-right font-bold text-slate-900 border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  className="w-full h-10 px-3 text-right tabular-nums font-semibold text-slate-900 border border-slate-300 rounded-md bg-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
             </div>
 
-            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-              <span className="font-bold text-red-600 text-[15px]">Amount Unpaid (Udhaar)</span>
-              <span className="font-bold text-red-600 text-[18px]">
+            <div className="flex flex-wrap justify-between items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <span className="font-semibold text-amber-900 text-sm">Amount Unpaid (Udhaar)</span>
+              <span className="font-bold text-amber-900 text-lg">
                 Rs {credit.toLocaleString()}
               </span>
             </div>
@@ -682,7 +667,7 @@ export function NewBillPage() {
                 type="button"
                 onClick={() => setPaymentMethod(PAYMENT_METHODS.CASH)}
                 disabled={!!editingSale}
-                className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${paymentMethod === PAYMENT_METHODS.CASH
+                className={`py-2.5 px-3 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${paymentMethod === PAYMENT_METHODS.CASH
                   ? 'bg-[#E8F8F0] border-emerald-400 text-[#065F46] shadow-2xs'
                   : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                   }`}
@@ -697,7 +682,7 @@ export function NewBillPage() {
                 type="button"
                 onClick={() => setPaymentMethod(PAYMENT_METHODS.BANK)}
                 disabled={!!editingSale}
-                className={`py-2.5 px-3 rounded-xl border flex items-center justify-center gap-2 text-sm font-bold transition-all cursor-pointer ${paymentMethod === PAYMENT_METHODS.BANK
+                className={`py-2.5 px-3 rounded-lg border flex items-center justify-center gap-2 text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${paymentMethod === PAYMENT_METHODS.BANK
                   ? 'bg-[#EAF2FD] border-blue-400 text-blue-700 shadow-2xs'
                   : 'bg-white border-slate-200 text-slate-800 hover:bg-slate-50'
                   }`}
@@ -710,13 +695,13 @@ export function NewBillPage() {
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-3 mt-auto pt-5">
+        <div className="space-y-3 mt-5 pt-5 border-t border-slate-200">
           {/* Save Bill Button */}
           <button
             type="button"
             disabled={isSaving || editBlocked}
             onClick={() => handleSaveBill()}
-            className="w-full py-3.5 bg-[#0F8A4B] hover:bg-[#0c743e] disabled:opacity-50 text-white font-bold text-[16px] rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+            className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold text-base rounded-lg flex items-center justify-center gap-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
           >
             {isSaving ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -762,7 +747,7 @@ export function NewBillPage() {
           isOpen={!!activeMazdooriItemId}
           onClose={() => setActiveMazdooriItemId(null)}
           title={
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center">
                 <HardHat className="w-4 h-4 stroke-[2.2]" />
               </div>
@@ -791,7 +776,7 @@ export function NewBillPage() {
                   {activeItem.mazdooriTasks.map((t) => (
                     <div
                       key={t.id}
-                      className="flex items-center justify-between p-2.5 bg-purple-50/50 border border-purple-100 rounded-xl text-xs"
+                      className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-purple-50/50 border border-purple-100 rounded-xl text-xs"
                     >
                       <div>
                         <span className="font-bold text-slate-900">{t.title}</span>
@@ -801,7 +786,7 @@ export function NewBillPage() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
                         <span className="font-bold text-purple-800">Rs {t.amount.toLocaleString()}</span>
                         <button
                           type="button"

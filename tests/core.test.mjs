@@ -9,8 +9,12 @@ const require = createRequire(import.meta.url)
 const root = process.cwd()
 const cache = new Map()
 let signedIn = true, remoteError = null, receivedChanges = [], duringUpload = null
-const remote = { auth: { getSession: async () => ({ data: { session: signedIn ? { user: {} } : null } }) }, rpc: async (_, { changes }) => { receivedChanges = changes; if (duringUpload) await duringUpload(); return { error: remoteError } } }
-const mocks = { 'services/supabase.ts': { isSupabaseConfigured: () => true, getSupabaseClient: () => remote } }
+const authListeners = new Set(), networkListeners = new Map()
+const remote = { auth: {
+  getSession: async () => ({ data: { session: signedIn ? { user: {} } : null } }),
+  onAuthStateChange: callback => { authListeners.add(callback); return { data: { subscription: { unsubscribe: () => authListeners.delete(callback) } } } },
+}, rpc: async (_, { changes }) => { receivedChanges = changes; if (duringUpload) await duringUpload(); return { error: remoteError } } }
+const mocks = { 'services/supabase.ts': { isSupabaseConfigured: () => true, syncCloudChanges: async changes => { const { error } = await remote.rpc('sync_shop_records', { changes }); if (error) throw new Error(error.message) } } }
 function source(file) {
   file = path.resolve(file)
   if (cache.has(file)) return cache.get(file).exports
@@ -30,7 +34,10 @@ function source(file) {
   return module.exports
 }
 const memory = new Map()
-globalThis.window = { addEventListener() {}, removeEventListener() {} }
+globalThis.window = {
+  addEventListener(name, callback) { if (!networkListeners.has(name)) networkListeners.set(name, new Set()); networkListeners.get(name).add(callback) },
+  removeEventListener(name, callback) { networkListeners.get(name)?.delete(callback) },
+}
 Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true })
 globalThis.localStorage = { getItem: k => memory.get(k) ?? null, setItem: (k,v) => memory.set(k,String(v)), removeItem: k => memory.delete(k), clear: () => memory.clear() }
 const db = source(path.join(root, 'src/services/sqlite.service.ts'))
@@ -42,7 +49,246 @@ const { buildChanges, syncService } = source(path.join(root, 'src/services/sync.
 const line = (extra = {}) => ({ id: 'line-1', itemName: 'Cutting', quantity: 2, rate: 100, mazdoori: 50, amount: 250, mazdooriTasks: [{ id: 'task-1', title: 'Cutting labour', amount: 50, mazdoorName: 'Rashid' }], ...extra })
 async function bill(customerId, extra = {}) { return db.createSale({ items: [line()], customerId, customerName: 'QA Customer', subtotal: 1, total: 1, totalMazdoori: 0, discount: 0, paidAmount: 100, remainingCredit: 0, paymentMethod: 'cash', ...extra }) }
 async function customer() { return db.createCustomer({ name: 'QA Customer', mobile: '03000000000' }) }
-test.beforeEach(() => { memory.clear(); signedIn = true; remoteError = null; duringUpload = null; receivedChanges = [] })
+test.beforeEach(() => { syncService.cleanup(); memory.clear(); signedIn = true; navigator.onLine = true; remoteError = null; duringUpload = null; receivedChanges = [] })
+test.afterEach(() => syncService.cleanup())
+
+async function waitForSync(condition) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (await condition()) return
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  assert.fail('Automatic sync did not reach the expected state')
+}
+function network(online) {
+  navigator.onLine = online
+  for (const callback of networkListeners.get(online ? 'online' : 'offline') || []) callback()
+}
+
+test('auto sync preserves offline records across restart and uploads immediately on reconnect', async () => {
+  navigator.onLine = false
+  const c = await customer(); await bill(c.id)
+  const saved = (await db.exportDatabase()).tables
+  syncService.start(); syncService.start()
+  await new Promise(resolve => setTimeout(resolve, 20))
+  assert.equal(receivedChanges.length, 0)
+  assert.deepEqual((await db.exportDatabase()).tables, saved)
+  syncService.cleanup(); syncService.start()
+  assert.equal(networkListeners.get('online').size, 1)
+  network(true)
+  await waitForSync(async () => (await db.getSyncQueue()).length === 0)
+  assert.ok(receivedChanges.some(change => change.table === 'sales'))
+  network(false)
+  await db.receivePayment({ customerId: c.id, amount: 10, paymentMethod: 'cash' })
+  assert.ok((await db.getSyncQueue()).length > 0)
+  network(true)
+  await waitForSync(async () => (await db.getSyncQueue()).length === 0)
+  assert.equal((await db.getPayments()).length, 2)
+})
+
+test('auto sync retries a failed upload on reconnect without waiting for backoff', async () => {
+  await customer(); remoteError = { message: 'Network dropped during upload' }
+  syncService.start()
+  await waitForSync(async () => (await db.getSyncQueue()).every(row => row.status === 'failed'))
+  remoteError = null
+  network(false); network(true)
+  await waitForSync(async () => (await db.getSyncQueue()).length === 0)
+  assert.equal(syncService.getError(), null)
+  assert.equal((await db.getCustomers()).length, 1)
+})
+
+test('auto sync needs no sign-in, respects restore pause and cleans up listeners', async () => {
+  signedIn = false; await customer()
+  syncService.start()
+  await waitForSync(async () => (await db.getSyncQueue()).length === 0)
+  assert.ok(receivedChanges.length > 0)
+  await syncService.pause(); await customer(); network(true)
+  await new Promise(resolve => setTimeout(resolve, 30))
+  assert.ok((await db.getSyncQueue()).length > 0)
+  assert.equal(localStorage.getItem('arki_sync_paused'), 'true')
+  syncService.cleanup()
+  assert.equal(authListeners.size, 0)
+  assert.equal(networkListeners.get('online').size, 0)
+  assert.equal(networkListeners.get('offline').size, 0)
+})
+
+test('auto sync drains changes saved during an upload in the next automatic batch', async () => {
+  const c = await customer(); await bill(c.id)
+  duringUpload = async () => { duringUpload = null; await db.receivePayment({ customerId: c.id, amount: 10, paymentMethod: 'cash' }) }
+  syncService.start()
+  await waitForSync(async () => (await db.getSyncQueue()).length === 0)
+  assert.ok(receivedChanges.some(change => change.table === 'payments' && change.row.amount === 10))
+  assert.equal((await db.getCustomers())[0].balance, 90)
+})
+
+test('correcting an incorrectly paid bill to zero updates receipt, customer dues and ledger atomically', async () => {
+  const c = await customer()
+  await bill(c.id, { paidAmount: 1000, items: [line({ quantity: 1, rate: 1000 })] })
+  const original = (await db.getSales())[0]
+  const number = await db.updateSale(original.id, { ...original, paidAmount: 0 })
+  const corrected = (await db.getSales())[0]
+  assert.equal(number, original.invoiceNumber); assert.equal((await db.getSales()).length, 1)
+  assert.equal(corrected.paidAmount, 0); assert.equal(corrected.remainingCredit, 1000)
+  assert.equal((await db.getPayments()).length, 0)
+  const account = await db.getCustomerById(c.id)
+  assert.equal(account.totalPurchase, 1000); assert.equal(account.totalPaid, 0); assert.equal(account.balance, 1000)
+  const ledger = await db.getCustomerLedger(c.id)
+  assert.equal(ledger[0].credit, 0); assert.equal(ledger[0].debit, 1000); assert.equal(ledger[0].balance, 1000)
+  assert.equal(corrected.items[0].mazdooriTasks[0].workerName, 'Rashid')
+  assert.equal((await db.getMazdoors())[0].balance, 50)
+  validateBackup(await db.exportDatabase())
+  await db.updateSale(corrected.id, { ...corrected, paidAmount: 500 })
+  assert.equal((await db.getPayments())[0].amount, 500)
+  assert.equal((await db.getCustomerById(c.id)).balance, 500)
+  await db.updateSale(corrected.id, { ...corrected, paidAmount: 500 })
+  assert.equal((await db.getPayments()).length, 1)
+  assert.equal((await db.getCustomerById(c.id)).balance, 500)
+})
+
+test('payment corrections preserve later receipts and adjust later running balances without changing their credits', async () => {
+  const c = await customer()
+  await bill(c.id, { paidAmount: 500, items: [line({ quantity: 1, rate: 2000 })] })
+  const original = (await db.getSales())[0]
+  await db.receivePayment({ customerId: c.id, saleId: original.id, amount: 200, paymentMethod: 'bank' })
+  await bill(c.id, { paidAmount: 0 })
+  await db.receivePayment({ customerId: c.id, amount: 50, paymentMethod: 'cash' })
+  const updated = (await db.getSales()).find(s => s.id === original.id)
+  const before = (await db.exportDatabase()).tables
+  await assert.rejects(() => db.updateSale(original.id, { ...updated, paidAmount: 0 }), /Later payments/)
+  assert.deepEqual((await db.exportDatabase()).tables, before)
+  const receiptBefore = (await db.getPayments()).filter(r => r.paymentMethod === 'bank' || !r.saleId)
+  await db.updateSale(original.id, { ...updated, paidAmount: 200 })
+  assert.deepEqual((await db.getPayments()), receiptBefore)
+  assert.equal((await db.getCustomerById(c.id)).balance, 1950)
+  const ledger = await db.getCustomerLedger(c.id)
+  assert.equal(ledger[0].credit, 0); assert.equal(ledger[0].balance, 2000)
+  assert.equal(ledger[1].credit, 200); assert.equal(ledger[1].balance, 1800)
+  assert.equal(ledger.at(-1).credit, 50); assert.equal(ledger.at(-1).balance, 1950)
+  const { previousInvoiceBalance } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
+  const nextBill = (await db.getSales()).find(s => s.id !== original.id)
+  assert.equal(previousInvoiceBalance({ saleId: nextBill.id, invoiceNumber: nextBill.invoiceNumber }, ledger), 1800)
+  validateBackup(await db.exportDatabase())
+})
+
+test('invoice includes previous dues once and retains its account snapshot after later bills and payments', async () => {
+  const { saleToInvoiceData, previousInvoiceBalance, invoiceAccountTotals } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
+  const c = await customer()
+  await bill(c.id, { paidAmount: 0, items: [line({ quantity: 1, rate: 5000, mazdoori: 0, mazdooriTasks: [] })] })
+  await bill(c.id, { paidAmount: 500, items: [line({ quantity: 1, rate: 2000, mazdoori: 230, mazdooriTasks: [] })] })
+  const current = (await db.getSales())[0]
+  const invoice = saleToInvoiceData(current, await db.getCustomerById(c.id))
+  const beforePreview = (await db.exportDatabase()).tables
+  invoice.previousBalance = previousInvoiceBalance(invoice, await db.getCustomerLedger(c.id))
+  assert.deepEqual(invoiceAccountTotals(invoice), { previousBalance: 5000, total: 7000, balance: 6500, advance: 0 })
+  assert.equal(invoice.total, 2000); assert.equal(current.remainingCredit, 1500)
+  assert.equal((await db.getCustomerById(c.id)).balance, 6500)
+  assert.deepEqual((await db.exportDatabase()).tables, beforePreview)
+  await db.receivePayment({ customerId: c.id, amount: 1000, paymentMethod: 'cash' })
+  await bill(c.id, { paidAmount: 0, items: [line({ quantity: 1, rate: 3000, mazdoori: 0, mazdooriTasks: [] })] })
+  assert.equal(previousInvoiceBalance(invoice, await db.getCustomerLedger(c.id)), 5000)
+  const React = require('react'), { renderToStaticMarkup } = require('react-dom/server')
+  const { ShopInvoiceTemplate } = source(path.join(root, 'src/features/billing/components/ShopInvoiceTemplate.tsx'))
+  for (const receiptPaperSize of ['A4', '80mm', '58mm']) {
+    const html = renderToStaticMarkup(React.createElement(ShopInvoiceTemplate, { data: invoice, settings: { ...db.DEFAULT_SETTINGS, receiptPaperSize } }))
+    assert.match(html, /2,000/); assert.match(html, /Previous Dues/); assert.match(html, /5,000/); assert.match(html, /7,000/); assert.match(html, /6,500/)
+    assert.doesNotMatch(html, /Mazdoori|230/)
+  }
+})
+
+test('invoice account totals handle walk-ins, discounts, advance balances and exact legacy ledger matches', () => {
+  const { previousInvoiceBalance, invoiceAccountTotals } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
+  assert.deepEqual(invoiceAccountTotals({ total: 2000, paidAmount: 2000 }), { previousBalance: 0, total: 2000, balance: 0, advance: 0 })
+  assert.equal(invoiceAccountTotals({ total: 1950, previousBalance: 5000, paidAmount: 500 }).total, 6950)
+  assert.deepEqual(invoiceAccountTotals({ total: 2000, previousBalance: -3000, paidAmount: 0 }), { previousBalance: -3000, total: 0, balance: 0, advance: 1000 })
+  assert.equal(previousInvoiceBalance({ invoiceNumber: 'ARKI-1001' }, [{ description: 'Invoice #ARKI-10010', balance: 9999, debit: 100, credit: 0 }, { description: 'Invoice #ARKI-1001', balance: 6800, debit: 2000, credit: 200 }]), 5000)
+  assert.throws(() => previousInvoiceBalance({ invoiceNumber: 'missing' }, []), /customer account/)
+})
+
+test('internal mazdoori persists but never increases the new customer bill, dues or cart total', async () => {
+  const { useCartStore } = source(path.join(root, 'src/stores/cart.store.ts'))
+  useCartStore.getState().resetCart()
+  const itemId = useCartStore.getState().items[0].id
+  useCartStore.getState().updateItem(itemId, { itemName: 'Sheet', quantity: 1, rate: 78, mazdoori: 230 })
+  assert.equal(useCartStore.getState().items[0].amount, 78)
+  assert.equal(useCartStore.getState().getTotal(), 78)
+  assert.equal(useCartStore.getState().getCredit(), 78)
+  useCartStore.getState().updateItem(itemId, { mazdoori: 999 })
+  assert.equal(useCartStore.getState().getTotal(), 78)
+  useCartStore.getState().resetCart()
+  const c = await customer()
+  await bill(c.id, { paidAmount: 0, items: [line({ quantity: 1, rate: 78, mazdoori: 230, mazdooriTasks: [{ id: 'work', title: 'Internal work', amount: 230, workerName: 'Worker' }] })] })
+  const [sale] = await db.getSales()
+  assert.equal(sale.total, 78); assert.equal(sale.subtotal, 78); assert.equal(sale.remainingCredit, 78)
+  assert.equal(sale.totalMazdoori, 230); assert.equal(sale.items[0].mazdoori, 230)
+  assert.equal((await db.getCustomerById(c.id)).balance, 78)
+  assert.equal((await db.getCustomerLedger(c.id))[0].debit, 78)
+  assert.equal((await db.getMazdoors())[0].totalWork, 230)
+  const backup = await db.exportDatabase()
+  await db.restoreDatabase(backup)
+  assert.equal((await db.getSales())[0].items[0].mazdoori, 230)
+  await assert.rejects(() => bill(c.id, { paidAmount: 79, items: [line({ quantity: 1, rate: 78, mazdoori: 230, mazdooriTasks: [] })] }), /bill total/)
+})
+
+test('customer invoice hides internal mazdoori and worker details on A4 and thermal paper', () => {
+  const React = require('react')
+  const { renderToStaticMarkup } = require('react-dom/server')
+  const { ShopInvoiceTemplate } = source(path.join(root, 'src/features/billing/components/ShopInvoiceTemplate.tsx'))
+  const data = { invoiceNumber: 'QA-1', date: '2026-10-08', items: [line({ quantity: 1, rate: 78, amount: 78, mazdoori: 230, mazdooriTasks: [{ id: 'task', title: 'Private worker task', workerName: 'Private Worker', amount: 230 }] })], subtotal: 78, totalMazdoori: 230, discount: 0, total: 78, paidAmount: 0, remainingCredit: 78, paymentMethod: 'cash' }
+  for (const receiptPaperSize of ['A4', '80mm', '58mm']) {
+    const html = renderToStaticMarkup(React.createElement(ShopInvoiceTemplate, { data, settings: { ...db.DEFAULT_SETTINGS, receiptPaperSize } }))
+    assert.doesNotMatch(html, /Mazdoori|Labour|Labor|labour|Private Worker|Private worker task|230/)
+    assert.match(html, /78/)
+  }
+})
+
+test('legacy bills with included labour restore unchanged alongside new internal labour bills', async () => {
+  await db.initDatabase()
+  localStorage.setItem('arki_sales_v1', JSON.stringify([{ id: 'legacy', invoiceNumber: 'OLD-1', items: [line()], subtotal: 200, totalMazdoori: 50, total: 250, discount: 0, paidAmount: 250, remainingCredit: 0, paymentMethod: 'cash', createdAt: '2026-10-01T10:00:00Z', syncStatus: 'pending' }]))
+  localStorage.removeItem('arki_database_v2')
+  await db.initDatabase()
+  await bill(null, { paidAmount: 200 })
+  const backup = await db.exportDatabase()
+  validateBackup(backup)
+  await db.restoreDatabase(backup)
+  assert.equal((await db.getSales()).find(s => s.id === 'legacy').total, 250)
+  assert.equal((await db.getSales()).find(s => s.id !== 'legacy').total, 200)
+  const corrupt = structuredClone(backup)
+  corrupt.tables.sale_items[0].amount = 999
+  assert.throws(() => validateBackup(corrupt), /balance|item/)
+})
+
+test('product search supports English and Urdu and bilingual descriptions survive billing and backup', async () => {
+  const { PRODUCTS, productName, searchProducts } = source(path.join(root, 'src/constants/products.ts'))
+  assert.equal(searchProducts('  STEEL SHEET  ')[0].id, 'chadar')
+  assert.equal(searchProducts('چوکھٹ')[0].id, 'chowkhat')
+  assert.equal(searchProducts('جالی')[0].id, 'laser-grill')
+  assert.equal(searchProducts('unlisted custom product').length, 0)
+  assert.equal(searchProducts(productName(PRODUCTS[0])).length, PRODUCTS.length)
+  const c = await customer()
+  const name = productName(PRODUCTS[0])
+  await bill(c.id, { items: [line({ itemName: name })] })
+  assert.equal((await db.getSales())[0].items[0].itemName, name)
+  const backup = await db.exportDatabase()
+  await db.restoreDatabase(backup)
+  assert.equal((await db.getSales())[0].items[0].itemName, name)
+  await bill(c.id, { items: [line({ itemName: 'Custom Sheet 8x4 / خاص چادر' })] })
+  assert.equal((await db.getSales())[0].items[0].itemName, 'Custom Sheet 8x4 / خاص چادر')
+})
+
+test('saved shop details publish immediately, persist on reload and reject invalid changes', async () => {
+  const { useBusinessSettingsStore } = source(path.join(root, 'src/stores/business-settings.store.ts'))
+  const initial = await db.getBusinessSettings()
+  let notifications = 0
+  const unsubscribe = useBusinessSettingsStore.subscribe(() => { notifications++ })
+  const updated = await db.updateBusinessSettings({ ...initial, businessName: 'QA Print Shop', subtitle: '', phone: '03001234567', address: 'QA Shop Address', footerText: '' })
+  assert.equal(notifications, 1)
+  assert.deepEqual(useBusinessSettingsStore.getState().settings, updated)
+  assert.equal((await db.getBusinessSettings()).businessName, 'QA Print Shop')
+  assert.equal((await db.getBusinessSettings()).subtitle, '')
+  const saved = useBusinessSettingsStore.getState().settings
+  await assert.rejects(db.updateBusinessSettings({ ...saved, businessName: ' ' }), /shop name/)
+  assert.equal(useBusinessSettingsStore.getState().settings, saved)
+  unsubscribe()
+})
 
 test('New Bill clears edit mode from any entry point and declining keeps the complete draft', async () => {
   const { useCartStore } = source(path.join(root,'src/stores/cart.store.ts'))
@@ -156,7 +402,7 @@ test('editing keeps the original sale and receipt dates in daily reports', async
   await db.updateSale(original.id, { ...original, discount: 10 })
   const sales = await db.getSales(), receipts = activePayments(await db.getPayments(),sales)
   assert.equal(receipts[0].paymentDate, '2025-01-02T09:01:00Z')
-  assert.deepEqual(dailyReport(sales,receipts), [{date:'2025-01-02',bills:1,total:240,received:100,credit:140}])
+  assert.deepEqual(dailyReport(sales,receipts), [{date:'2025-01-02',bills:1,total:190,received:100,credit:90}])
 })
 
 test('editing rejects invalid totals, changed receipts/customers and inactive bills without changing any table', async () => {
@@ -202,14 +448,14 @@ test('storage failure during an edit leaves the old bill, balances and sequence 
 })
 
 test('a walk-in bill can correct its description, while unpaid credit still requires a customer', async () => {
-  await bill(null,{paidAmount:250})
+  await bill(null,{paidAmount:200})
   const original = (await db.getSales())[0]
   const before = (await db.exportDatabase()).tables
   await assert.rejects(() => db.updateSale(original.id,{...original,items:[line({rate:150})]}), /customer/i)
   assert.deepEqual((await db.exportDatabase()).tables,before)
   await db.updateSale(original.id,{...original,items:[line({itemName:'Correct description'})]})
   assert.equal(activeSales(await db.getSales())[0].items[0].itemName,'Correct description')
-  assert.equal(activePayments(await db.getPayments(),await db.getSales()).reduce((sum,p)=>sum+p.amount,0),250)
+  assert.equal(activePayments(await db.getPayments(),await db.getSales()).reduce((sum,p)=>sum+p.amount,0),200)
 })
 
 test('Edit Bill loads a separate draft and New Bill clears the old customer, items, payment and edit state', async () => {
@@ -228,7 +474,7 @@ test('Edit Bill loads a separate draft and New Bill clears the old customer, ite
 })
 test('bill normalizes legacy worker names and recomputes totals rather than trusting UI', () => {
   const bill = prepareBill([line()], 10, 100)
-  assert.equal(bill.total, 240); assert.equal(bill.subtotal, 200); assert.equal(bill.totalMazdoori, 50); assert.equal(bill.remainingCredit, 140); assert.equal(bill.items[0].mazdooriTasks[0].workerName, 'Rashid')
+  assert.equal(bill.total, 190); assert.equal(bill.subtotal, 200); assert.equal(bill.totalMazdoori, 50); assert.equal(bill.remainingCredit, 90); assert.equal(bill.items[0].mazdooriTasks[0].workerName, 'Rashid')
 })
 test('invalid descriptions, nonfinite values, excess discounts/payments and mismatched labour are rejected', () => {
   for (const item of [line({ itemName: '' }), line({ quantity: 0 }), line({ rate: Infinity }), line({ mazdoori: 40 })]) assert.throws(() => prepareBill([item], 0, 0))
@@ -245,9 +491,9 @@ test('invoice atomically posts worker labour, customer credit, receipts and ledg
   const c = await customer(); await bill(c.id)
   const w = (await db.getMazdoors())[0]; assert.equal(w.balance, 50); assert.equal(w.totalWork, 50)
   assert.equal((await db.getMazdooriEntries(w.id)).length, 1)
-  assert.equal((await db.getCustomerById(c.id)).balance, 150)
+  assert.equal((await db.getCustomerById(c.id)).balance, 100)
   assert.equal((await db.getPayments())[0].amount, 100)
-  assert.equal((await db.getCustomerLedger(c.id))[0].debit, 250)
+  assert.equal((await db.getCustomerLedger(c.id))[0].debit, 200)
 })
 test('failure halfway through a bill leaves every table and invoice sequence unchanged', async () => {
   await db.initDatabase(); const before = (await db.exportDatabase()).tables
@@ -256,13 +502,13 @@ test('failure halfway through a bill leaves every table and invoice sequence unc
 })
 test('later receipts update customer ledger and date-based report cash collections', async () => {
   const c = await customer(); await bill(c.id); await db.receivePayment({ customerId: c.id, amount: 50, paymentMethod: 'bank' })
-  assert.equal((await db.getCustomerById(c.id)).balance, 100); assert.equal((await db.getCustomerById(c.id)).totalPaid, 150)
+  assert.equal((await db.getCustomerById(c.id)).balance, 50); assert.equal((await db.getCustomerById(c.id)).totalPaid, 150)
   const rows = dailyReport(await db.getSales(), await db.getPayments()); assert.equal(rows.reduce((sum,r) => sum+r.received,0), 150)
   await assert.rejects(() => db.receivePayment({ customerId: c.id, amount: 101, paymentMethod: 'cash' }), /exceed/)
 })
 test('unregistered cash customer cannot leave unpaid credit', async () => {
   await assert.rejects(() => bill(null), /customer/)
-  await bill(null, { paidAmount: 250 }); assert.equal((await db.getSales()).length, 1)
+  await bill(null, { paidAmount: 200 }); assert.equal((await db.getSales()).length, 1)
 })
 test('worker payouts and immutable void reversals retain history and correct balances', async () => {
   const w = await db.createMazdoor({ name: 'Imran' })
@@ -283,7 +529,7 @@ test('full backup restore round-trip retains children, receipts and ledgers, and
   fs.mkdirSync(path.join(root, 'artifacts/qa'), { recursive: true })
   fs.writeFileSync(path.join(root, 'artifacts/qa/restore-fixture.json'), JSON.stringify(backup))
   await bill(c.id); await db.restoreDatabase(backup)
-  assert.equal((await db.getSales()).length, 1); assert.equal((await db.getCustomerById(c.id)).balance, 100)
+  assert.equal((await db.getSales()).length, 1); assert.equal((await db.getCustomerById(c.id)).balance, 50)
   assert.equal((await db.getPayments()).length, 2); assert.equal((await db.getSales())[0].items.length, 1)
   assert.equal(localStorage.getItem('arki_sync_paused'), 'true'); assert.equal(JSON.parse(localStorage.getItem('arki_pre_restore_v2')).tables.sales.length, 2)
   assert.ok((await db.getSyncQueue()).some(q => q.entityType === 'sale_items'))
@@ -297,7 +543,7 @@ test('sync includes all invoice children and correct raw updated customer balanc
   const c = await customer(); await bill(c.id); await db.receivePayment({ customerId: c.id, amount: 50, paymentMethod: 'cash' })
   const changes = buildChanges(await db.exportDatabase(), await db.getSyncQueue())
   for (const table of ['business_settings','customers','mazdoors','sales','sale_items','sale_item_mazdoori_tasks','payments','customer_ledger','mazdoori_entries']) assert.ok(changes.some(c => c.table === table), table)
-  assert.equal(changes.find(c => c.table === 'customers').row.balance, 100)
+  assert.equal(changes.find(c => c.table === 'customers').row.balance, 50)
   fs.mkdirSync(path.join(root, 'artifacts/qa'), { recursive: true })
   fs.writeFileSync(path.join(root, 'artifacts/qa/sync-fixture.json'), JSON.stringify(changes))
   assert.ok(changes.findIndex(c => c.table === 'sales') < changes.findIndex(c => c.table === 'sale_items'))
@@ -321,10 +567,14 @@ test('records created during upload remain pending for the next batch', async ()
   await syncService.processQueue(true)
   assert.ok((await db.getSyncQueue()).length > 0); assert.equal((await db.getCustomers())[0].syncStatus, 'pending')
 })
-test('signed-out and paused sync never upload or discard offline records', async () => {
-  await customer(); signedIn = false; await syncService.processQueue(true); assert.equal(receivedChanges.length, 0); assert.ok((await db.getSyncQueue()).length > 0)
-  signedIn = true; await syncService.pause(); await syncService.processQueue(); assert.equal(receivedChanges.length, 0)
+test('ENV-based sync uploads without user auth and a restore pause still protects records', async () => {
+  await customer(); signedIn = false; await syncService.processQueue(true)
+  assert.ok(receivedChanges.length > 0); assert.equal((await db.getSyncQueue()).length, 0)
+  await syncService.pause(); await customer(); receivedChanges = []
+  await syncService.processQueue(); assert.equal(receivedChanges.length, 0)
+  assert.ok((await db.getSyncQueue()).length > 0)
 })
+
 test('legacy browser migration preserves source data and reconstructs item tasks and receipts', async () => {
   const legacy = [{ id: 'old-sale', invoiceNumber: 'ARKI-0999', items: [line()], subtotal: 200, totalMazdoori: 50, total: 250, discount: 0, paidAmount: 250, remainingCredit: 0, paymentMethod: 'cash', createdAt: '2026-10-01T10:00:00Z', syncStatus: 'pending' }]
   localStorage.setItem('arki_sales_v1', JSON.stringify(legacy)); await db.initDatabase()
@@ -358,9 +608,9 @@ test('reports and exports retain more than the former 500-invoice limit', async 
 })
 test('money edge: decimal line values and a fully-paid bill round to two decimals without credit residue', () => {
   const decimal = line({ quantity: 3, rate: 0.1, mazdoori: 0.2, amount: 0, mazdooriTasks: [] })
-  const result = prepareBill([decimal], 0, 0.5)
+  const result = prepareBill([decimal], 0, 0.3)
   assert.equal(result.subtotal, 0.3); assert.equal(result.totalMazdoori, 0.2)
-  assert.equal(result.total, 0.5); assert.equal(result.remainingCredit, 0)
+  assert.equal(result.total, 0.3); assert.equal(result.remainingCredit, 0)
 })
 test('calendar edge: impossible dates are rejected while leap-day records are accepted', async () => {
   assert.equal(isValidDateKey('2024-02-29'), true)
@@ -392,7 +642,7 @@ test('cancelling an invoice keeps it in history and reverses customer, refund, l
   const after = await db.getCustomerById(c.id)
   assert.equal(after.totalPurchase, 0); assert.equal(after.totalPaid, 20); assert.equal(after.balance, -20)
   const ledger = await db.getCustomerLedger(c.id), last = ledger[ledger.length - 1]
-  assert.equal(last.credit, 250); assert.equal(last.debit, 100); assert.equal(last.balance, -20); assert.equal(last.saleId, sale.id); assert.match(last.description, /cancelled - Wrong rate/)
+  assert.equal(last.credit, 200); assert.equal(last.debit, 100); assert.equal(last.balance, -20); assert.equal(last.saleId, sale.id); assert.match(last.description, /cancelled - Wrong rate/)
   const cancelled = (await db.getSales())[0]; assert.ok(cancelled.cancelledAt); assert.equal(cancelled.cancelReason, 'Wrong rate'); assert.equal(cancelled.items.length, 1)
   const w = (await db.getMazdoors())[0]; assert.equal(w.balance, 0); assert.equal(w.totalWork, 0); assert.equal((await db.getMazdooriEntries(w.id)).length, 2)
   const sales = await db.getSales(), payments = activePayments(await db.getPayments(), sales)
@@ -405,7 +655,7 @@ test('cancelling an invoice keeps it in history and reverses customer, refund, l
   fs.writeFileSync(path.join(root, 'artifacts/qa/cancel-after-fixture.json'), JSON.stringify(changes))
 })
 test('cancelling a walk-in cash invoice needs no customer', async () => {
-  await bill(null, { paidAmount: 250 }); const [sale] = await db.getSales()
+  await bill(null, { paidAmount: 200 }); const [sale] = await db.getSales()
   await db.cancelSale(sale.id); assert.ok((await db.getSales())[0].cancelledAt)
   assert.equal(activePayments(await db.getPayments(), await db.getSales()).length, 0)
 })
@@ -464,7 +714,7 @@ test('cancel edge: discount, several labour tasks and a payout reverse only that
   await bill(c.id, { items, discount: 90 }) // 590 - 90 = 500, paid 100
   await bill(c.id) // 250, paid 100, Rashid +50
   const [, first] = await db.getSales()
-  assert.equal(first.total, 500)
+  assert.equal(first.total, 410)
   const rashid = async () => (await db.getMazdoors()).find(w => w.name === 'Rashid')
   assert.equal((await rashid()).balance, 120)
   await db.payMazdoor({ mazdoorId: (await rashid()).id, amount: 100 })
@@ -472,7 +722,7 @@ test('cancel edge: discount, several labour tasks and a payout reverse only that
   const r = await rashid(), imran = (await db.getMazdoors()).find(w => w.name === 'Imran')
   assert.equal(r.totalWork, 50); assert.equal(r.balance, -50); assert.equal(imran.balance, 0)
   const cust = await db.getCustomerById(c.id)
-  assert.equal(cust.totalPurchase, 250); assert.equal(cust.totalPaid, 100); assert.equal(cust.balance, 150)
+  assert.equal(cust.totalPurchase, 200); assert.equal(cust.totalPaid, 100); assert.equal(cust.balance, 100)
   validateBackup(await db.exportDatabase())
 })
 test('cancel edge: ledger columns still add up to the balance after mixed activity', async () => {
@@ -508,4 +758,91 @@ test('cancel edge: cancelling an already-synced invoice uploads only the changed
 })
 test('money formatting never shows a negative zero', () => {
   assert.equal(formatPKR(-0), 'Rs 0'); assert.equal(formatPKR(-0.004), 'Rs 0'); assert.equal(formatPKR(-20), 'Rs -20')
+})
+
+
+test('mazdoori weekly history groups saved bills, preserves detail and updates corrected totals', () => {
+  const { mazdooriWeeks, mazdooriDay } = source(path.join(root, 'src/features/mazdoori/period.ts'))
+  const row = (id, date, amount, extra = {}) => ({ id, createdAt: date + 'T12:00:00', totalMazdoori: amount, items: [line()], ...extra })
+  const records = [row('thursday', '2026-10-08', 100), row('saturday', '2026-10-03', 25.5), row('friday', '2026-10-09', 900), row('next-week', '2026-10-10', 200), row('cancelled', '2026-10-06', 999, { cancelledAt: '2026-10-06T13:00:00' }), row('old-year', '2025-12-30', 50), row('no-labor', '2026-10-07', 0)]
+  const before = structuredClone(records)
+  const weeks = mazdooriWeeks(records)
+  assert.deepEqual(weeks.map(week => week.from), ['2026-10-10', '2026-10-03', '2025-12-27'])
+  assert.equal(weeks[1].to, '2026-10-08')
+  assert.equal(weeks[1].total, 125.5); assert.equal(weeks[1].days, 2); assert.equal(weeks[1].bills, 2)
+  assert.deepEqual(weeks[1].sales.map(sale => sale.id), ['saturday', 'cancelled', 'thursday'])
+  assert.deepEqual(weeks[1].sales[0].items, records[1].items)
+  assert.deepEqual(records, before)
+  assert.deepEqual(mazdooriWeeks(JSON.parse(JSON.stringify(records))), weeks)
+  records[0].totalMazdoori = 150
+  assert.equal(mazdooriWeeks(records)[1].total, 175.5)
+  assert.equal(mazdooriDay('2026-10-06T12:00:00'), 'Tuesday')
+  assert.equal(mazdooriDay('2026-10-07T12:00:00'), 'Wednesday')
+  assert.deepEqual(mazdooriWeeks([]), [])
+})
+
+test('mazdoori weekly history remains available after a local backup restore', async () => {
+  const { mazdooriWeeks } = source(path.join(root, 'src/features/mazdoori/period.ts'))
+  const c = await customer(); await bill(c.id)
+  const before = mazdooriWeeks(await db.getSales())
+  await db.restoreDatabase(await db.exportDatabase())
+  assert.deepEqual(mazdooriWeeks(await db.getSales()), before)
+})
+
+test('mazdoori ledger carries chronological labor and weight totals across days and pages', () => {
+  const { mazdooriLedger, mazdooriWeeks } = source(path.join(root, 'src/features/mazdoori/period.ts'))
+  const records = Array.from({ length: 12 }, (_, i) => ({
+    id: String(i).padStart(2, '0'), createdAt: `2026-10-${i < 6 ? '03' : '08'}T12:${String(i).padStart(2, '0')}:00`,
+    totalMazdoori: 10.25, items: [line({ quantity: 0.1 }), line({ quantity: 0.2, mazdoori: 0 })],
+  }))
+  records.push({ id: 'cancelled', createdAt: '2026-10-05T12:00:00', totalMazdoori: 999, items: [line({ quantity: 999 })], cancelledAt: '2026-10-05T13:00:00' })
+  records.reverse()
+  const before = structuredClone(records)
+  const rows = mazdooriLedger(records)
+  assert.equal(rows[0].sale.id, '00')
+  assert.equal(rows[0].mazdoori, 10.25); assert.equal(rows[0].weight, 0.3)
+  assert.equal(rows.find(row => row.sale.id === '06').totalMazdoori, 71.75)
+  const cancelled = rows.find(row => row.sale.id === 'cancelled')
+  assert.equal(cancelled.totalMazdoori, 61.5); assert.equal(cancelled.totalWeight, 1.8)
+  assert.equal(rows.slice(10)[0].totalMazdoori, 102.5)
+  assert.equal(rows.at(-1).totalMazdoori, 123); assert.equal(rows.at(-1).totalWeight, 3.6)
+  assert.deepEqual(records, before)
+  const nextWeek = { id: 'next', createdAt: '2026-10-10T12:00:00', totalMazdoori: 50, items: [line({ quantity: 2 })] }
+  const weeks = mazdooriWeeks([...records, nextWeek])
+  assert.equal(mazdooriLedger(weeks[0].sales)[0].totalMazdoori, 50)
+  assert.equal(mazdooriLedger(weeks[0].sales)[0].totalWeight, 2)
+  assert.deepEqual(mazdooriLedger([]), [])
+})
+
+test('mazdoori workweek runs Saturday to Thursday and excludes the Friday holiday', () => {
+  const { mazdooriPeriod, isInMazdooriPeriod } = source(path.join(root, 'src/features/mazdoori/period.ts'))
+  for (const today of ['2026-10-03', '2026-10-08', '2026-10-09']) {
+    const period = mazdooriPeriod('weekly', today)
+    assert.equal(period.from, '2026-10-03'); assert.equal(period.to, '2026-10-08')
+    assert.equal(isInMazdooriPeriod('2026-10-03T12:00:00', period), true)
+    assert.equal(isInMazdooriPeriod('2026-10-08T23:59:59', period), true)
+    assert.equal(isInMazdooriPeriod('2026-10-02T12:00:00', period), false)
+    assert.equal(isInMazdooriPeriod('2026-10-09T00:00:00', period), false)
+    assert.equal(isInMazdooriPeriod('2026-10-10T00:00:00', period), false)
+  }
+  assert.equal(mazdooriPeriod('weekly', '2026-10-10').from, '2026-10-10')
+  assert.equal(mazdooriPeriod('weekly', '2026-01-01').from, '2025-12-27')
+  assert.equal(mazdooriPeriod('weekly', '2026-01-01').to, '2026-01-01')
+})
+
+test('mazdoori period totals cover all matching pages, count days once and exclude cancelled bills', () => {
+  const { mazdooriPeriod, isInMazdooriPeriod, mazdooriSummary } = source(path.join(root, 'src/features/mazdoori/period.ts'))
+  const rows = Array.from({ length: 12 }, (_, i) => ({ createdAt: i < 6 ? '2026-10-03T12:00:00' : '2026-10-08T12:00:00', totalMazdoori: 10.25 }))
+  rows.push({ createdAt: '2026-10-09T12:00:00', totalMazdoori: 500 }, { createdAt: '2026-09-30T12:00:00', totalMazdoori: 1000 })
+  rows.push({ createdAt: '2026-10-08T12:00:00', totalMazdoori: 999, cancelledAt: '2026-10-08T13:00:00' })
+  const summarize = preset => mazdooriSummary(rows.filter(row => isInMazdooriPeriod(row.createdAt, mazdooriPeriod(preset, '2026-10-08'))))
+  assert.deepEqual(summarize('weekly'), { total: 123, bills: 12, days: 2 })
+  assert.deepEqual(summarize('today'), { total: 61.5, bills: 6, days: 1 })
+  assert.deepEqual(summarize('monthly'), { total: 623, bills: 13, days: 3 })
+  assert.deepEqual(summarize('all'), { total: 1623, bills: 14, days: 4 })
+  assert.equal(mazdooriPeriod('monthly', '2028-02-15').to, '2028-02-29')
+  assert.equal(mazdooriPeriod('monthly', '2026-12-15').to, '2026-12-31')
+  assert.deepEqual(mazdooriSummary([]), { total: 0, bills: 0, days: 0 })
+  const custom = mazdooriPeriod('custom', '2026-10-08', '2026-10-08', '2026-10-08')
+  assert.deepEqual(mazdooriSummary(rows.filter(row => isInMazdooriPeriod(row.createdAt, custom))), { total: 61.5, bills: 6, days: 1 })
 })

@@ -52,7 +52,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   draftId: crypto.randomUUID(),
   useItemsAsNewBill: () => set(state => ({ draftId: crypto.randomUUID(), editingSale: null, paidAmount: 0, paymentMethod: 'cash', notes: state.notes.split('\n').filter(line => !line.startsWith('Updated from bill #')).join('\n') })),
   editingSale: null,
-  editBill: (sale, customer) => set({ draftId: crypto.randomUUID(), editingSale: structuredClone(sale), customer, items: structuredClone(sale.items), discount: sale.discount, paidAmount: sale.paidAmount, paymentMethod: sale.paymentMethod, notes: sale.notes || '' }),
+  editBill: (sale, customer) => set({ draftId: crypto.randomUUID(), editingSale: structuredClone(sale), customer, items: structuredClone(sale.items).map(item => ({ ...item, amount: calculateItemAmount(item.quantity, item.rate) })), discount: sale.discount, paidAmount: sale.paidAmount, paymentMethod: sale.paymentMethod, notes: sale.notes || '' }),
   customer: null,
   items: createInitialItems(),
   discount: 0,
@@ -74,7 +74,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         rate,
         mazdoori,
         mazdooriTasks: item?.mazdooriTasks || [],
-        amount: calculateItemAmount(quantity, rate, mazdoori),
+        amount: calculateItemAmount(quantity, rate),
       }
       return { items: [...state.items, newItem] }
     }),
@@ -84,7 +84,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       const items = state.items.map((item) => {
         if (item.id !== id) return item
         const updated = { ...item, ...updates }
-        updated.amount = calculateItemAmount(updated.quantity, updated.rate, updated.mazdoori)
+        updated.amount = calculateItemAmount(updated.quantity, updated.rate)
         return updated
       })
       return { items }
@@ -111,7 +111,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           ...item,
           mazdooriTasks: tasks,
           mazdoori,
-          amount: calculateItemAmount(item.quantity, item.rate, mazdoori),
+          amount: calculateItemAmount(item.quantity, item.rate),
         }
       })
       return { items }
@@ -127,7 +127,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           ...item,
           mazdooriTasks: tasks,
           mazdoori,
-          amount: calculateItemAmount(item.quantity, item.rate, mazdoori),
+          amount: calculateItemAmount(item.quantity, item.rate),
         }
       })
       return { items }
@@ -143,7 +143,7 @@ export const useCartStore = create<CartState>((set, get) => ({
           ...item,
           mazdooriTasks: tasks,
           mazdoori,
-          amount: calculateItemAmount(item.quantity, item.rate, mazdoori),
+          amount: calculateItemAmount(item.quantity, item.rate),
         }
       })
       return { items }
@@ -176,9 +176,8 @@ export const useCartStore = create<CartState>((set, get) => ({
       notes: '',
     }),
 
-  getSubtotal: () => calculateSubtotal(get().items),
-  getGoodsSubtotal: () =>
-    get().items.reduce((sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.rate) || 0), 0),
+  getSubtotal: () => calculateSubtotal(get().items.map(item => ({ amount: calculateItemAmount(item.quantity, item.rate) }))),
+  getGoodsSubtotal: () => get().getSubtotal(),
   getTotalMazdoori: () =>
     get().items.reduce((sum, it) => sum + (Number(it.mazdoori) || 0), 0),
   getTotal: () => calculateSaleTotal(get().getSubtotal(), get().discount),

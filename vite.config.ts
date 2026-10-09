@@ -13,9 +13,11 @@ export default defineConfig({
   },
   // Tauri expects a fixed port, fail if that port is not available
   server: {
+    proxy: { '/api/cloud': 'http://127.0.0.1:5175' },
     port: 5173,
     strictPort: true,
   },
+  preview: { proxy: { '/api/cloud': 'http://127.0.0.1:5175' } },
   build: {
     outDir: 'dist',
     target: 'esnext',

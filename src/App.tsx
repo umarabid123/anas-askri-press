@@ -16,9 +16,10 @@ export default function App() {
       if (cancelled) return
       setReady(true)
       await automaticBackup().catch(err => setWarning('Daily backup failed: ' + String(err)))
+      if (cancelled) return
       syncService.start()
       connectivityService.start()
-      if (await connectivityService.verifyConnection()) await syncService.processQueue()
+      void connectivityService.verifyConnection()
     }).catch((err: unknown) => {
       if (!cancelled) setError(err instanceof Error ? err.message : String(err))
     })

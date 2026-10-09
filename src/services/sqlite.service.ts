@@ -5,6 +5,7 @@ import type { SyncQueueRecord } from '@/types/database'
 import { prepareBill } from '@/utils/billing'
 import { isValidDateKey, localDateKey, roundMoney } from '@/utils/financial'
 import { useUIStore } from '@/stores/ui.store'
+import { useBusinessSettingsStore } from '@/stores/business-settings.store'
 import { TABLES, toRow, fromRow, validateBackup, type Backup, type Row, type Tables, type TableName } from './data-model'
 
 export interface CreateSaleInput {
@@ -231,6 +232,31 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
   if (isTauri()) return invoke('update_sale', { saleId, sale: { ...input, ...bill } })
   return transaction(t => {
     const sale = found(t, 'sales', saleId)
+    if (sale.cancelled_at) throw new Error('A cancelled bill cannot be edited. Start a new bill.')
+    if ((sale.customer_id || null) !== (input.customerId || null)) throw new Error('The customer cannot be changed on a saved bill.')
+    if (!['cash', 'bank'].includes(input.paymentMethod)) throw new Error('Choose cash or bank.')
+    if (bill.remainingCredit > 0 && !input.customerId) throw new Error('Select a customer for an unpaid bill, or enter the full payment.')
+    const oldTotal = Number(sale.total), oldPaid = Number(sale.paid_amount), oldCredit = Number(sale.remaining_credit)
+    const initialReceipt = t.payments.find(p => p.sale_id === saleId && (p.notes === 'Payment for invoice ' + sale.invoice_number || p.id === 'receipt-' + saleId))
+    const laterPaid = roundMoney(t.payments.filter(p => p.sale_id === saleId && p.id !== initialReceipt?.id).reduce((sum, p) => sum + Number(p.amount), 0))
+    if (bill.paidAmount < laterPaid) throw new Error('Later payments are already recorded for this bill. Payment Received cannot be less than those payments.')
+    const correctedInitialPaid = roundMoney(bill.paidAmount - laterPaid)
+    const ledgerRow = t.customer_ledger.find(row => row.sale_id === saleId && row.description === 'Invoice #' + sale.invoice_number)
+    const oldInitialPaid = ledgerRow ? Number(ledgerRow.credit) : initialReceipt ? Number(initialReceipt.amount) : roundMoney(oldPaid - laterPaid)
+    if (input.customerId) {
+      const account = found(t, 'customers', input.customerId)
+      account.total_purchase = roundMoney(Number(account.total_purchase) + bill.total - oldTotal)
+      account.total_paid = roundMoney(Number(account.total_paid) + bill.paidAmount - oldPaid)
+      account.balance = roundMoney(Number(account.balance) + bill.remainingCredit - oldCredit)
+      touch(account)
+      if (!ledgerRow) throw new Error('This bill is missing its customer ledger entry. Restore the record before editing.')
+      const customerRows = t.customer_ledger.filter(row => row.customer_id === input.customerId)
+      const position = customerRows.indexOf(ledgerRow)
+      const delta = roundMoney(bill.total - oldTotal - (correctedInitialPaid - oldInitialPaid))
+      ledgerRow.debit = bill.total
+      ledgerRow.credit = correctedInitialPaid
+      for (const row of customerRows.slice(position)) { row.balance = roundMoney(Number(row.balance) + delta); touch(row) }
+    }
     sale.customer_id = input.customerId || null
     sale.customer_name = input.customerName || null
     sale.customer_mobile = input.customerMobile || null
@@ -246,10 +272,14 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
     sale.cancel_reason = null
     touch(sale)
 
+    const oldItems = t.sale_items.filter(i => i.sale_id === saleId)
+    const oldItemIds = new Set(oldItems.map(item => item.id))
+    t.sale_item_mazdoori_tasks = t.sale_item_mazdoori_tasks.filter(task => !oldItemIds.has(task.sale_item_id))
     t.sale_items = t.sale_items.filter(i => i.sale_id !== saleId)
     for (const item of bill.items) {
+      const itemId = oldItemIds.has(item.id) ? item.id : crypto.randomUUID()
       t.sale_items.push(toRow(stamp({
-        id: crypto.randomUUID(),
+        id: itemId,
         saleId,
         itemId: item.itemId || null,
         itemName: item.itemName,
@@ -258,12 +288,13 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
         mazdoori: item.mazdoori,
         amount: item.amount,
       })))
+      for (const task of item.mazdooriTasks || []) t.sale_item_mazdoori_tasks.push({ id: task.id || crypto.randomUUID(), sale_item_id: itemId, title: task.title, amount: task.amount, worker_name: task.workerName || null, created_at: sale.created_at })
     }
 
-    const payment = t.payments.find(p => p.sale_id === saleId)
-    if (bill.paidAmount > 0) {
+    const payment = initialReceipt
+    if (correctedInitialPaid > 0) {
       if (payment) {
-        payment.amount = bill.paidAmount
+        payment.amount = correctedInitialPaid
         payment.payment_method = input.paymentMethod
         touch(payment)
       } else {
@@ -271,14 +302,14 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
           id: crypto.randomUUID(),
           customerId: input.customerId || null,
           saleId,
-          amount: bill.paidAmount,
+          amount: correctedInitialPaid,
           paymentMethod: input.paymentMethod,
           paymentDate: sale.created_at,
           notes: 'Payment for invoice ' + sale.invoice_number,
         })))
       }
     } else if (payment) {
-      t.payments = t.payments.filter(p => p.sale_id !== saleId)
+      t.payments = t.payments.filter(p => p.id !== payment.id)
     }
 
     return String(sale.invoice_number)
@@ -359,11 +390,16 @@ export async function getSales(limit = -1): Promise<Sale[]> {
 }
 export interface Receipt { id: string; amount: number; paymentDate: string; customerId?: string; saleId?: string; paymentMethod: string }
 export async function getPayments(): Promise<Receipt[]> { return (await exportDatabase()).tables.payments.map(fromRow<Receipt>) }
-export async function getBusinessSettings(): Promise<BusinessSettings> { if (isTauri()) return invoke('get_business_settings'); return fromRow<BusinessSettings>(readBrowser().business_settings[0]!) }
+export async function getBusinessSettings(): Promise<BusinessSettings> {
+  const settings = isTauri() ? await invoke<BusinessSettings>('get_business_settings') : fromRow<BusinessSettings>(readBrowser().business_settings[0]!)
+  useBusinessSettingsStore.getState().setSettings(settings)
+  return settings
+}
 export async function updateBusinessSettings(settings: BusinessSettings): Promise<BusinessSettings> {
   if (!['A4', '80mm', '58mm'].includes(settings.receiptPaperSize) || !settings.businessName.trim() || !settings.invoicePrefix.trim() || !Number.isSafeInteger(settings.nextInvoiceNumber) || settings.nextInvoiceNumber < 1) throw new Error('Enter shop name, invoice prefix and a positive invoice sequence.')
-  if (isTauri()) return invoke('update_business_settings', { settings })
-  return transaction(t => { t.business_settings = [toRow({ ...settings, id: 'default' })]; return settings })
+  const updated = isTauri() ? await invoke<BusinessSettings>('update_business_settings', { settings }) : transaction(t => { t.business_settings = [toRow({ ...settings, id: 'default' })]; return settings })
+  useBusinessSettingsStore.getState().setSettings(updated)
+  return updated
 }
 export async function getSyncQueue(limit = -1): Promise<SyncQueueRecord[]> {
   if (isTauri()) return invoke('get_sync_queue', { limit })

@@ -10,26 +10,14 @@ import { PageTitle, SectionTitle } from '@/components/ui/Typography'
 import {
   getBusinessSettings,
   updateBusinessSettings,
+  DEFAULT_SETTINGS,
 } from '@/services/sqlite.service'
 import type { BusinessSettings } from '@/types'
 
 import { DataSafetyPanel } from '../components/DataSafetyPanel'
 
 export function SettingsPage() {
-  const [settings, setSettings] = useState<BusinessSettings>({
-    id: 'default',
-    businessName: 'ANAS ARKI PRESS & LASER CUTTING',
-    subtitle: 'PRECISION | QUALITY | YOUR VISION OUR WORK',
-    phone: '0300-7973059',
-    address: 'Dhuddi wala Lower Canal Near Askari Bandk Main Jaranwala Road',
-    invoicePrefix: 'ARKI',
-    nextInvoiceNumber: 1001,
-    receiptPaperSize: 'A4',
-    footerText: 'Thank you for your business!',
-    showLogo: true,
-    currency: 'PKR',
-    currencySymbol: 'Rs',
-  })
+  const [settings, setSettings] = useState<BusinessSettings>(DEFAULT_SETTINGS)
 
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -84,7 +72,7 @@ export function SettingsPage() {
   return (
     <form onSubmit={handleSave} className="max-w-4xl mx-auto space-y-5 pb-8">
       {/* Header Bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <PageTitle>Shop & System Settings</PageTitle>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -92,14 +80,14 @@ export function SettingsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {saveSuccess && (
             <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
               <Check className="w-4 h-4" />
               Settings Saved
             </span>
           )}
-          <Button type="submit" disabled={isSaving} className="bg-[#1877F2] hover:bg-blue-600">
+          <Button type="submit" disabled={isSaving} className="bg-blue-700 hover:bg-blue-800">
             {isSaving ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
             Save Settings
           </Button>
@@ -114,7 +102,7 @@ export function SettingsPage() {
 
       {/* Business Information */}
       <Card className="p-5 space-y-4">
-        <div className="flex items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
+        <div className="flex flex-wrap items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
           <Store className="w-4 h-4 text-blue-600" />
           <SectionTitle>Shop & Letterhead Information</SectionTitle>
         </div>
@@ -160,7 +148,7 @@ export function SettingsPage() {
 
       {/* Invoice & Printing Formats */}
       <Card className="p-5 space-y-4">
-        <div className="flex items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
+        <div className="flex flex-wrap items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
           <Printer className="w-4 h-4 text-blue-600" />
           <SectionTitle>Invoice & Printing Setup</SectionTitle>
         </div>
