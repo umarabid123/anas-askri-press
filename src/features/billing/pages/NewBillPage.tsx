@@ -480,7 +480,14 @@ export function NewBillPage() {
                           row={index + 1}
                           invalid={isNameInvalid}
                           onKeyDown={(e) => handleCellKeyDown(e, index, 0)}
-                          onChange={(itemName) => updateItem(item.id, { itemName })}
+                          onChange={(itemName, selectedProduct) => {
+                            updateItem(item.id, {
+                              itemName,
+                              ...(selectedProduct?.defaultRate && selectedProduct.defaultRate > 0 && (!item.rate || item.rate === 0)
+                                ? { rate: selectedProduct.defaultRate }
+                                : {}),
+                            })
+                          }}
                         />
                       </td>
 

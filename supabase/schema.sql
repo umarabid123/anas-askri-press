@@ -63,6 +63,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_updated_at ON customers(updated_at DESC
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    urdu_name TEXT,
     category TEXT,
     default_rate NUMERIC(12, 2) NOT NULL DEFAULT 0,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,

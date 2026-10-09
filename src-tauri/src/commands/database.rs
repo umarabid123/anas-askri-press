@@ -1970,3 +1970,170 @@ pub fn delete_expense(expense_id: String, state: State<DbState>) -> Result<bool,
     if deleted == 0 { return Err("Expense not found".into()); }
     Ok(true)
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ItemDto {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "urduName")]
+    pub urdu_name: Option<String>,
+    pub category: Option<String>,
+    #[serde(rename = "defaultRate", default)]
+    pub default_rate: f64,
+    #[serde(rename = "isActive", default = "default_item_active")]
+    pub is_active: bool,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: Option<String>,
+    #[serde(rename = "updatedAt", default)]
+    pub updated_at: Option<String>,
+}
+
+fn default_item_active() -> bool {
+    true
+}
+
+#[tauri::command]
+pub fn get_items(state: State<DbState>) -> Result<Vec<ItemDto>, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    // Remove any previously seeded static items so only user-created dynamic items remain
+    let _ = conn.execute(
+        "DELETE FROM items WHERE id IN ('chadar', 'dabi', 'chowkhat', 'laser-grill', 'cnc-panel', 'steel-gate')",
+        [],
+    );
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, urdu_name, category, default_rate, is_active, created_at, updated_at
+         FROM items
+         ORDER BY name ASC"
+    ).map_err(|e| e.to_string())?;
+
+    let rows = stmt.query_map([], |r| {
+        let active_int: i64 = r.get(5)?;
+        Ok(ItemDto {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            urdu_name: r.get(2)?,
+            category: r.get(3)?,
+            default_rate: r.get(4)?,
+            is_active: active_int != 0,
+            created_at: r.get(6)?,
+            updated_at: r.get(7)?,
+        })
+    }).map_err(|e| e.to_string())?;
+
+    let mut items = Vec::new();
+    for row in rows {
+        items.push(row.map_err(|e| e.to_string())?);
+    }
+    Ok(items)
+}
+
+#[tauri::command]
+pub fn create_item(mut item: ItemDto, state: State<DbState>) -> Result<ItemDto, String> {
+    if item.name.trim().is_empty() {
+        return Err("Item name is required".into());
+    }
+    if item.id.trim().is_empty() {
+        item.id = Uuid::new_v4().to_string();
+    }
+    item.name = item.name.trim().to_string();
+    item.urdu_name = item.urdu_name.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
+    item.category = item.category.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    item.default_rate = (item.default_rate * 100.0).round() / 100.0;
+
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "INSERT INTO items (id, name, urdu_name, category, default_rate, is_active, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))",
+        params![item.id, item.name, item.urdu_name, item.category, item.default_rate, if item.is_active { 1 } else { 0 }],
+    ).map_err(|e| e.to_string())?;
+
+    let (created_at, updated_at): (String, String) = tx.query_row(
+        "SELECT created_at, updated_at FROM items WHERE id = ?1",
+        params![item.id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).map_err(|e| e.to_string())?;
+
+    item.created_at = Some(created_at);
+    item.updated_at = Some(updated_at);
+
+    let queue_id = Uuid::new_v4().to_string();
+    let payload = serde_json::to_string(&item).unwrap_or_default();
+    let _ = tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'items', ?2, 'INSERT', ?3, 'pending')",
+        params![queue_id, item.id, payload],
+    );
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(item)
+}
+
+#[tauri::command]
+pub fn update_item(mut item: ItemDto, state: State<DbState>) -> Result<ItemDto, String> {
+    if item.name.trim().is_empty() {
+        return Err("Item name is required".into());
+    }
+    item.name = item.name.trim().to_string();
+    item.urdu_name = item.urdu_name.map(|u| u.trim().to_string()).filter(|u| !u.is_empty());
+    item.category = item.category.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    item.default_rate = (item.default_rate * 100.0).round() / 100.0;
+
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let updated = tx.execute(
+        "UPDATE items
+         SET name = ?1, urdu_name = ?2, category = ?3, default_rate = ?4, is_active = ?5, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+         WHERE id = ?6",
+        params![item.name, item.urdu_name, item.category, item.default_rate, if item.is_active { 1 } else { 0 }, item.id],
+    ).map_err(|e| e.to_string())?;
+
+    if updated == 0 {
+        return Err("Item not found".into());
+    }
+
+    let updated_at: String = tx.query_row(
+        "SELECT updated_at FROM items WHERE id = ?1",
+        params![item.id],
+        |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
+
+    item.updated_at = Some(updated_at);
+
+    let queue_id = Uuid::new_v4().to_string();
+    let payload = serde_json::to_string(&item).unwrap_or_default();
+    let _ = tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'items', ?2, 'UPDATE', ?3, 'pending')",
+        params![queue_id, item.id, payload],
+    );
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(item)
+}
+
+#[tauri::command]
+pub fn delete_item(item_id: String, state: State<DbState>) -> Result<bool, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let deleted = tx.execute("DELETE FROM items WHERE id = ?1", params![item_id]).map_err(|e| e.to_string())?;
+    if deleted == 0 {
+        return Err("Item not found".into());
+    }
+
+    let queue_id = Uuid::new_v4().to_string();
+    let _ = tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'items', ?2, 'DELETE', '{}', 'pending')",
+        params![queue_id, item_id],
+    );
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+

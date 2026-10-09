@@ -3,6 +3,7 @@ export const ROUTES = {
   BILLS: '/bills',
   CUSTOMERS: '/customers',
   CUSTOMER_DETAIL: '/customers/:id',
+  PRODUCTS: '/products',
   MAZDOORI: '/mazdoori',
   REPORTS: '/reports',
   SETTINGS: '/settings',

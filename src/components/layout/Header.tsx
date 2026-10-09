@@ -32,29 +32,29 @@ export function Header() {
   })
 
   return (
-    <header className="px-6 py-3.5 flex items-center justify-between shrink-0 select-none bg-[#EEF4F8]">
+    <header className="px-4 sm:px-6 py-3 flex items-center justify-between shrink-0 select-none bg-[#EEF4F8] min-w-0">
       {/* Brand Identity */}
-      <div className="flex items-center gap-3">
-        <ShopLogo className="w-10 h-10" />
-        <div>
-          <h1 className="text-[19px] font-bold text-slate-900 tracking-tight leading-tight">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+        <ShopLogo className="w-9 h-9 sm:w-10 sm:h-10 shrink-0" />
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-[19px] font-bold text-slate-900 tracking-tight leading-tight truncate">
             {settings.businessName}
           </h1>
-          {settings.subtitle && <p className="text-[13px] text-slate-500 font-normal leading-tight mt-0.5">
+          {settings.subtitle && <p className="text-xs sm:text-[13px] text-slate-500 font-normal leading-tight mt-0.5 truncate">
             {settings.subtitle}
           </p>}
         </div>
       </div>
 
       {/* Right Side: Sync status + Date & Time */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 shrink-0">
         {/* Data Continuity UX */}
         <SyncStatusIndicator />
 
         {/* Date & Time */}
-        <div className="flex items-center gap-2 text-slate-600 font-medium text-[13px] bg-white/70 px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
-          <Calendar className="w-4 h-4 text-slate-500 stroke-[2.2]" />
-          <span>{formattedDate}</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600 font-medium text-xs sm:text-[13px] bg-white/70 px-2.5 sm:px-3 py-1.5 rounded-xl border border-slate-200/80 shadow-2xs">
+          <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-500 stroke-[2.2]" />
+          <span className="hidden sm:inline">{formattedDate}</span>
           <span className="font-semibold text-slate-700 ml-0.5">{formattedTime}</span>
         </div>
       </div>

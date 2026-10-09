@@ -13,6 +13,27 @@ export interface Customer {
   syncStatus: SyncStatus
 }
 
+export interface Item {
+  id: string
+  name: string
+  urduName?: string | null
+  category?: string | null
+  defaultRate: number
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type Product = Item
+
+export interface ItemFormData {
+  name: string
+  urduName?: string
+  category?: string
+  defaultRate?: number
+  isActive?: boolean
+}
+
 export interface ItemMazdooriTask {
   id: string
   title: string

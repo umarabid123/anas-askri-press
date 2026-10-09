@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  Package,
   Settings,
   Users,
   UserCheck,
@@ -22,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'New Bill', to: ROUTES.NEW_BILL, icon: FileText },
   { name: 'All Bills', to: ROUTES.BILLS, icon: FileText },
   { name: 'Customers', to: ROUTES.CUSTOMERS, icon: Users },
+  { name: 'Products', to: ROUTES.PRODUCTS, icon: Package },
   { name: 'Mazdoori', to: ROUTES.MAZDOORI, icon: UserCheck },
   // { name: 'Reports', to: ROUTES.REPORTS, icon: BarChart2 },
   { name: 'Settings', to: ROUTES.SETTINGS, icon: Settings },
@@ -34,7 +36,7 @@ export function Sidebar() {
     <aside
       className={cn(
         'flex flex-col justify-between select-none shrink-0 py-2 bg-[#EEF4F8] transition-all duration-200',
-        sidebarCollapsed ? 'w-18 pl-4 pr-2' : 'w-48 pl-6 pr-3'
+        sidebarCollapsed ? 'w-16 pl-3 pr-2' : 'w-44 xl:w-48 pl-3.5 xl:pl-6 pr-2 xl:pr-3'
       )}
     >
       <div>

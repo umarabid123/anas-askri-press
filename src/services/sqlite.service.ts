@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { BusinessSettings, Customer, CustomerLedgerEntry, Expense, Mazdoor, MazdooriEntry, Sale, SaleItem } from '@/types'
+import type { BusinessSettings, Customer, CustomerLedgerEntry, Expense, Item, ItemFormData, Mazdoor, MazdooriEntry, Sale, SaleItem } from '@/types'
 import { customerSchema, type CustomerFormData } from '@/schemas'
 import type { SyncQueueRecord } from '@/types/database'
 import { prepareBill } from '@/utils/billing'
@@ -34,10 +34,13 @@ function readBrowser(): Tables {
     // Databases saved before a table existed (e.g. expenses) get it as empty
     const tables = JSON.parse(saved) as Tables
     for (const table of TABLES) tables[table] ??= []
+    // Keep only user-created dynamic items
+    tables.items = tables.items.filter(i => !['chadar', 'dabi', 'chowkhat', 'laser-grill', 'cnc-panel', 'steel-gate'].includes(String(i.id)))
     return tables
   }
   const tables = emptyTables()
   tables.business_settings = [toRow(DEFAULT_SETTINGS)]
+  tables.items = []
   for (const [table, key] of Object.entries(LEGACY)) {
     const raw = localStorage.getItem(key)
     if (!raw) continue
@@ -332,6 +335,52 @@ export async function createExpense(input: ExpenseInput): Promise<Expense> {
 export async function deleteExpense(id: string): Promise<boolean> {
   if (isTauri()) return invoke('delete_expense', { expenseId: id })
   return transaction(t => { found(t, 'expenses', id); t.expenses = t.expenses.filter(r => r.id !== id); return true })
+}
+export async function getItems(): Promise<Item[]> {
+  if (isTauri()) return invoke('get_items')
+  return readBrowser().items.map(fromRow<Item>)
+}
+export async function createItem(input: ItemFormData): Promise<Item> {
+  if (!input.name.trim()) throw new Error('Product name is required.')
+  const item: Item = {
+    id: crypto.randomUUID(),
+    name: input.name.trim(),
+    urduName: input.urduName?.trim() || null,
+    category: input.category?.trim() || null,
+    defaultRate: roundMoney(Number(input.defaultRate) || 0),
+    isActive: input.isActive ?? true,
+    createdAt: now(),
+    updatedAt: now(),
+  }
+  if (isTauri()) return invoke('create_item', { item })
+  return transaction(t => { t.items.push(toRow(item)); return item })
+}
+export async function updateItem(item: Item): Promise<Item> {
+  if (!item.name.trim()) throw new Error('Product name is required.')
+  const cleanItem: Item = {
+    ...item,
+    name: item.name.trim(),
+    urduName: item.urduName?.trim() || null,
+    category: item.category?.trim() || null,
+    defaultRate: roundMoney(Number(item.defaultRate) || 0),
+    isActive: item.isActive ?? true,
+    updatedAt: now(),
+  }
+  if (isTauri()) return invoke('update_item', { item: cleanItem })
+  return transaction(t => {
+    const row = found(t, 'items', item.id)
+    Object.assign(row, toRow(cleanItem))
+    touch(row)
+    return fromRow<Item>(row)
+  })
+}
+export async function deleteItem(id: string): Promise<boolean> {
+  if (isTauri()) return invoke('delete_item', { itemId: id })
+  return transaction(t => {
+    found(t, 'items', id)
+    t.items = t.items.filter(r => r.id !== id)
+    return true
+  })
 }
 export async function getMazdoors(): Promise<Mazdoor[]> { if (isTauri()) return invoke('get_mazdoors'); return readBrowser().mazdoors.map(fromRow<Mazdoor>) }
 export async function createMazdoor(data: { name: string; phone?: string }): Promise<Mazdoor> {

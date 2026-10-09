@@ -3,7 +3,7 @@ import { isValidDateKey } from '@/utils/financial'
 export const TABLES = ['business_settings', 'customers', 'items', 'mazdoors', 'sales', 'sale_items', 'sale_item_mazdoori_tasks', 'payments', 'customer_ledger', 'mazdoori_entries', 'expenses', 'sync_queue'] as const
 export type TableName = typeof TABLES[number]
 // Tables added after the first v2 backups; older backups may omit them.
-const OPTIONAL_TABLES: readonly TableName[] = ['expenses']
+const OPTIONAL_TABLES: readonly TableName[] = ['expenses', 'items']
 export type Row = Record<string, string | number | boolean | null>
 export type Tables = Record<TableName, Row[]>
 export type Backup = { format: 'arki-pos'; version: 2; exportedAt: string; tables: Tables }

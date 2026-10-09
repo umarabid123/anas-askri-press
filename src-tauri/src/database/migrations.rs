@@ -46,6 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_customers_sync_status ON customers(sync_status);
 CREATE TABLE IF NOT EXISTS items (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    urdu_name TEXT,
     category TEXT,
     default_rate REAL NOT NULL DEFAULT 0.0,
     is_active INTEGER NOT NULL DEFAULT 1,
@@ -207,6 +208,10 @@ CREATE TABLE IF NOT EXISTS expenses (
 CREATE INDEX IF NOT EXISTS idx_expenses_expense_date ON expenses(expense_date DESC);
 "#;
 
+pub const MIGRATION_04_SQL: &str = r#"
+ALTER TABLE items ADD COLUMN urdu_name TEXT;
+"#;
+
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
     // 1. Ensure migrations table
     conn.execute_batch(
@@ -263,6 +268,29 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         )?;
         tx.commit()?;
         log::info!("Migration 03 applied successfully");
+    }
+
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 4",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if count == 0 {
+        log::info!("Running Migration 04: Product urdu name");
+        let tx = conn.transaction()?;
+        let mut pragma = tx.prepare("PRAGMA table_info(items)")?;
+        let columns: Vec<String> = pragma.query_map([], |r| r.get(1))?.collect::<Result<Vec<String>, _>>()?;
+        drop(pragma);
+        if !columns.contains(&"urdu_name".to_string()) {
+            tx.execute_batch(MIGRATION_04_SQL)?;
+        }
+        tx.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))",
+            params![4, "04_product_urdu_name"],
+        )?;
+        tx.commit()?;
+        log::info!("Migration 04 applied successfully");
     }
 
     Ok(())

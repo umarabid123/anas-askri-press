@@ -31,7 +31,19 @@ export function buildChanges(backup: Backup, queue: SyncQueueRecord[]): Change[]
     }
   }
   for (const change of Array.from(changes.values())) if (change.operation === 'UPSERT') parents(change)
-  return Array.from(changes.values()).map(change => ({ ...change, row: Object.fromEntries(Object.entries(change.row).map(([key, value]) => [key, ['created_at', 'updated_at', 'payment_date', 'date'].includes(key) && typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? value.replace(' ', 'T') + 'Z' : value])) })).sort((a, b) => {
+  return Array.from(changes.values()).map(change => ({
+    ...change,
+    row: Object.fromEntries(
+      Object.entries(change.row)
+        .filter(([key, value]) => !(key === 'urdu_name' && (value === null || value === undefined || value === '')))
+        .map(([key, value]) => [
+          key,
+          ['created_at', 'updated_at', 'payment_date', 'date'].includes(key) && typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+            ? value.replace(' ', 'T') + 'Z'
+            : value,
+        ])
+    ),
+  })).sort((a, b) => {
     if (a.operation !== b.operation) return a.operation === 'UPSERT' ? -1 : 1
     const order = TABLES.indexOf(a.table) - TABLES.indexOf(b.table)
     return a.operation === 'DELETE' ? -order : order
