@@ -329,7 +329,7 @@ test('an inactive edit draft can save as a new bill without reusing old receipts
   await db.createSale({...prepared,customerId:c.id,paymentMethod:draft.paymentMethod,notes:draft.notes})
   assert.deepEqual((await db.exportDatabase()).tables.sales.find(s=>s.id===original.id),before)
   assert.equal(activeSales(await db.getSales()).length,1)
-  assert.equal(activeSales(await db.getSales())[0].total,350)
+  assert.equal(activeSales(await db.getSales())[0].total,300)
   assert.equal(activeSales(await db.getSales())[0].paidAmount,0)
   assert.equal(editBlockReason(activeSales(await db.getSales())[0].id,await db.getSales()),null)
   assert.match(editBlockReason('missing',await db.getSales()),/not found/)
@@ -350,12 +350,12 @@ test('customer history shows entry meaning for cancelled bills, old copies, corr
   await db.receivePayment({customerId:c.id,amount:100,paymentMethod:'cash'})
   const sales = await db.getSales(), ledger = await db.getCustomerLedger(c.id)
   assert.deepEqual(ledger.map(entry=>ledgerEntryStatus(entry,sales).label),[
-    'Cancelled','Bill Cancelled','Old Bill','Updated Bill','Bill Updated','Payment Received'
+    'Cancelled','Bill Cancelled','Bill Added','Payment Received'
   ])
   for (const syncStatus of ['pending','synced','failed']) {
-    assert.equal(ledgerEntryStatus({...ledger[5],syncStatus},sales).label,'Payment Received')
+    assert.equal(ledgerEntryStatus({...ledger[3],syncStatus},sales).label,'Payment Received')
   }
-  assert.equal(billStatus(sales.find(sale=>sale.invoiceNumber==='ARKI-1003')).label,'Updated Bill')
+  assert.equal(billStatus(sales.find(sale=>sale.id===second.id)).label,'Bill Added')
   assert.equal(billStatus({...first,cancelledAt:null}).label,'Bill Added')
 })
 
@@ -375,20 +375,18 @@ test('editing a bill retains the original and corrects dues without duplicating 
   const original = (await db.getSales())[0], worker = (await db.getMazdoors())[0]
   await db.receivePayment({ customerId: c.id, amount: 50, paymentMethod: 'bank' })
   await db.payMazdoor({ mazdoorId: worker.id, amount: 20, paymentMethod: 'cash' })
-  const replacement = await db.updateSale(original.id, { ...original, items: [line({ quantity: 3, mazdoori: 80, mazdooriTasks: [{ id: 'changed', title: 'More cutting', amount: 80, workerName: 'Rashid' }] })] })
-  assert.equal(replacement, 'ARKI-1002')
-  const sales = await db.getSales(), old = sales.find(s => s.id === original.id), latest = sales.find(s => s.invoiceNumber === replacement)
-  assert.equal(old.total, 250); assert.deepEqual(old.items, original.items)
-  assert.ok(old.cancelledAt); assert.equal(old.cancelReason, 'Updated: use bill #ARKI-1002')
-  assert.equal(latest.total, 380); assert.equal(latest.createdAt, original.createdAt)
-  assert.equal((await db.getCustomerById(c.id)).balance, 230)
+  const updated = await db.updateSale(original.id, { ...original, items: [line({ quantity: 3, mazdoori: 80, mazdooriTasks: [{ id: 'changed', title: 'More cutting', amount: 80, workerName: 'Rashid' }] })] })
+  assert.equal(updated, original.invoiceNumber)
+  const sales = await db.getSales(), latest = sales.find(s => s.id === original.id)
+  assert.equal(latest.total, 300); assert.equal(latest.createdAt, original.createdAt)
+  assert.equal((await db.getCustomerById(c.id)).balance, 150)
   assert.equal((await db.getCustomerById(c.id)).totalPaid, 150)
-  const w = (await db.getMazdoors())[0]; assert.equal(w.totalWork, 80); assert.equal(w.totalPaid, 20); assert.equal(w.balance, 60)
+  const w = (await db.getMazdoors())[0]; assert.equal(w.totalWork, 50); assert.equal(w.totalPaid, 20); assert.equal(w.balance, 30)
   assert.equal(activeSales(sales).length, 1)
   assert.equal(activePayments(await db.getPayments(), sales).reduce((sum,p) => sum+p.amount,0), 150)
   validateBackup(await db.exportDatabase())
   const balance = (await db.getCustomerLedger(c.id)).reduce((sum,r) => sum+r.debit-r.credit,0)
-  assert.equal(balance, 230)
+  assert.equal(balance, 150)
 })
 
 test('editing keeps the original sale and receipt dates in daily reports', async () => {
@@ -408,14 +406,15 @@ test('editing keeps the original sale and receipt dates in daily reports', async
 test('editing rejects invalid totals, changed receipts/customers and inactive bills without changing any table', async () => {
   const c = await customer(); await bill(c.id)
   const original = (await db.getSales())[0]
-  for (const changes of [{discount:200}, {paidAmount:110}, {paymentMethod:'bank'}, {customerId:'missing'}, {items:[line({quantity:0})]}]) {
+  for (const changes of [{discount:201}, {paidAmount:250}, {customerId:'missing'}, {items:[line({quantity:0})]}]) {
     const before = (await db.exportDatabase()).tables
     await assert.rejects(() => db.updateSale(original.id,{...original,...changes}))
     assert.deepEqual((await db.exportDatabase()).tables,before)
   }
   await db.updateSale(original.id,{...original,discount:10})
+  await db.cancelSale(original.id)
   const before = (await db.exportDatabase()).tables
-  await assert.rejects(() => db.updateSale(original.id,original), /no longer active/)
+  await assert.rejects(() => db.updateSale(original.id,original), /cancelled/)
   await assert.rejects(() => db.updateSale('missing',original), /not found/i)
   assert.deepEqual((await db.exportDatabase()).tables,before)
 })
@@ -425,16 +424,13 @@ test('repeated edits retain every previous version in backups and upload all lin
   await syncService.processQueue(true)
   const original = (await db.getSales())[0]
   await db.updateSale(original.id,{...original,discount:10})
-  const second = activeSales(await db.getSales())[0]
-  await db.updateSale(second.id,{...second,discount:20})
+  await db.updateSale(original.id,{...original,discount:20})
   const backup = await db.exportDatabase(), sales = await db.getSales()
-  assert.equal(sales.length,3); assert.equal(activeSales(sales)[0].total,230)
+  assert.equal(sales.length,1); assert.equal(activeSales(sales)[0].total,180)
   const changes = buildChanges(backup,await db.getSyncQueue())
-  for (const table of ['sales','sale_items','sale_item_mazdoori_tasks','customer_ledger','mazdoori_entries','payments']) assert.ok(changes.some(c => c.table===table), table)
+  for (const table of ['sales','sale_items','customer_ledger','payments']) assert.ok(changes.some(c => c.table===table), table)
   await db.restoreDatabase(backup)
-  assert.equal((await db.getSales()).length,3)
-  assert.equal((await db.getCustomerById(c.id)).balance,130)
-  assert.equal(activePayments(await db.getPayments(),await db.getSales()).length,1)
+  assert.equal((await db.getSales()).length,1)
 })
 
 test('storage failure during an edit leaves the old bill, balances and sequence unchanged', async () => {

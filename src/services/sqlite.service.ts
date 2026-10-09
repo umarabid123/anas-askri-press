@@ -145,6 +145,7 @@ export async function receivePayment(payment: ReceivePaymentInput): Promise<stri
     if (customerId) {
       const customer = t.customers.find(c => c.id === customerId)
       if (customer) {
+        if (!payment.saleId && payment.amount > Number(customer.balance)) throw new Error('Payment cannot exceed the outstanding balance.')
         customer.total_paid = roundMoney(Number(customer.total_paid) + payment.amount)
         customer.balance = roundMoney(Number(customer.balance) - payment.amount)
         touch(customer)

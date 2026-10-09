@@ -5,9 +5,10 @@ export function prepareBill(items: SaleItem[], discount: number, paidAmount: num
   if (![discount, paidAmount].every(Number.isFinite) || discount < 0 || paidAmount < 0) {
     throw new Error('Enter zero or a positive amount for discount and payment.')
   }
-  if (!items.length) throw new Error('Please add at least one item.')
+  const activeItems = items.filter(item => (item.itemName && item.itemName.trim()) || item.rate > 0 || item.mazdoori > 0 || (item.mazdooriTasks && item.mazdooriTasks.length > 0))
+  if (!activeItems.length) throw new Error('Please add at least one item.')
 
-  const normalized = items.map((item, index) => {
+  const normalized = activeItems.map((item, index) => {
     const rowNum = index + 1
     if (!item.itemName || !item.itemName.trim()) {
       throw new Error(`Row #${rowNum}: Item / Description is required.`)
