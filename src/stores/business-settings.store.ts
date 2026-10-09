@@ -5,3 +5,5 @@ export const useBusinessSettingsStore = create<{
   settings: BusinessSettings | null
   setSettings: (settings: BusinessSettings) => void
 }>((set) => ({ settings: null, setSettings: (settings) => set({ settings }) }))
+
+
