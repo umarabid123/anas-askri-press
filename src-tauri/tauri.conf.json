@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Arki POS",
+  "productName": "Anas Arki Press and Laser Cutting",
   "version": "0.1.0",
   "identifier": "com.anasarkipress.pos",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Arki Press & CNC Shop",
+        "title": "Anas Arki Press and Laser Cutting",
         "width": 1280,
         "height": 800,
         "minWidth": 1024,

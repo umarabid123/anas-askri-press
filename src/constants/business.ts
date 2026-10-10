@@ -1,5 +1,5 @@
 export const BUSINESS_INFO = {
-  name: 'Arki Press & CNC Shop',
+  name: 'Anas Arki Press & Laser Cutting',
   subtitle: 'Chadar • Dabi • Chogat • Laser Cutting • CNC Cutting',
   defaultPhone: '',
   defaultAddress: '',
