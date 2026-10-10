@@ -8,6 +8,7 @@ export interface Customer {
   totalPurchase: number
   totalPaid: number
   balance: number // credit owed by customer
+  openingBalance?: number
   createdAt: string
   updatedAt: string
   syncStatus: SyncStatus

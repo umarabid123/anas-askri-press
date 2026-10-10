@@ -4,6 +4,7 @@ export const customerSchema = z.object({
   name: z.string().trim().min(2, 'Customer name must be at least 2 characters'),
   mobile: z.string().trim().min(10, 'Valid phone number is required (e.g. 03001234567)'),
   address: z.string().trim().optional(),
+  openingBalance: z.number().nonnegative('Opening balance cannot be negative').default(0).optional(),
 })
 
 export type CustomerFormData = z.infer<typeof customerSchema>

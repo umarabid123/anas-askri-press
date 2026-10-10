@@ -34,5 +34,8 @@ export function ledgerEntryStatus(entry: CustomerLedgerEntry, sales: Sale[]): En
   if (/^Payment Received(?:\s|$)/i.test(entry.description) && entry.credit > 0 && entry.debit === 0) {
     return { label: 'Payment Received', variant: 'success', detail: 'Money received from this customer.' }
   }
+  if (/^Opening Balance/i.test(entry.description) && entry.debit > 0 && entry.credit === 0) {
+    return { label: 'Opening Balance', variant: 'warning', detail: 'Previous udhar balance carried forward when customer was registered.' }
+  }
   return { label: entry.debit > 0 ? 'Amount Added' : entry.credit > 0 ? 'Amount Reduced' : 'Record Added', variant: 'default', detail: 'An account entry. See the description for details.' }
 }

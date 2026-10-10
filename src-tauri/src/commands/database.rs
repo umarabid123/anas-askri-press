@@ -318,7 +318,7 @@ pub fn get_customers(state: State<DbState>) -> Result<Vec<CustomerDto>, String> 
 
 #[tauri::command]
 pub fn create_customer(customer: CustomerDto, state: State<DbState>) -> Result<CustomerDto, String> {
-    if customer.name.trim().len()<2 || customer.mobile.trim().len()<10 || customer.total_purchase != 0.0 || customer.total_paid != 0.0 || customer.balance != 0.0 { return Err("Invalid customer profile".into()); }
+    if customer.name.trim().len()<2 || customer.mobile.trim().len()<10 || customer.total_purchase < 0.0 || customer.total_paid != 0.0 || customer.balance < 0.0 || (customer.total_purchase - customer.balance).abs() > 0.01 { return Err("Invalid customer profile".into()); }
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -341,6 +341,22 @@ pub fn create_customer(customer: CustomerDto, state: State<DbState>) -> Result<C
             customer.balance,
         ],
     ).map_err(|e| e.to_string())?;
+
+    if customer.balance > 0.0 {
+        let ledger_id = Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
+             VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'Opening Balance (Previous Udhar)', ?3, 0.0, ?3, NULL, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
+            params![ledger_id, id, customer.balance],
+        ).map_err(|e| e.to_string())?;
+
+        let q_id = Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+             VALUES (?1, 'customer_ledger', ?2, 'INSERT', '{}', 'pending')",
+            params![q_id, ledger_id],
+        ).map_err(|e| e.to_string())?;
+    }
 
     // Add to sync queue
     let queue_id = Uuid::new_v4().to_string();

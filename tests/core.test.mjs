@@ -860,4 +860,34 @@ test('mazdoori ledger only includes items with kg unit in weight, excluding qty 
   assert.equal(rows[0].totalWeight, 8)
   assert.equal(rows[0].mazdoori, 100)
 })
+test('customer with opening balance initializes ledger and includes previous balance in first bill', async () => {
+  const { saleToInvoiceData, previousInvoiceBalance, invoiceAccountTotals } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
+  const c = await db.createCustomer({ name: 'Opening Customer', mobile: '03001234567', openingBalance: 4500 })
+  assert.equal(c.balance, 4500)
+  assert.equal(c.totalPurchase, 4500)
+  assert.equal(c.totalPaid, 0)
 
+  const ledger = await db.getCustomerLedger(c.id)
+  assert.equal(ledger.length, 1)
+  assert.equal(ledger[0].debit, 4500)
+  assert.equal(ledger[0].credit, 0)
+  assert.equal(ledger[0].balance, 4500)
+  assert.match(ledger[0].description, /Opening Balance/)
+
+  validateBackup(await db.exportDatabase())
+
+  await bill(c.id, { paidAmount: 500, items: [line({ quantity: 1, rate: 1500, mazdoori: 0, mazdooriTasks: [] })] })
+  const sale = (await db.getSales())[0]
+  const invoice = saleToInvoiceData(sale, await db.getCustomerById(c.id))
+  invoice.previousBalance = previousInvoiceBalance(invoice, await db.getCustomerLedger(c.id))
+
+  assert.equal(invoice.previousBalance, 4500)
+  const totals = invoiceAccountTotals(invoice)
+  assert.equal(totals.previousBalance, 4500)
+  assert.equal(totals.total, 6000)
+  assert.equal(totals.balance, 5500)
+
+  const updatedCustomer = await db.getCustomerById(c.id)
+  assert.equal(updatedCustomer.balance, 5500)
+  validateBackup(await db.exportDatabase())
+})

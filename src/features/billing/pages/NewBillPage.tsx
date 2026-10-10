@@ -333,6 +333,11 @@ export function NewBillPage() {
                   <User className="w-4 h-4 text-blue-600" />
                   <span className="text-xs font-bold text-blue-900">{customer.name}</span>
                   <span className="text-xs text-blue-600">({customer.mobile})</span>
+                  {customer.balance > 0 && (
+                    <span className="text-xs font-bold text-red-700 bg-red-100/80 px-2 py-0.5 rounded-md border border-red-200">
+                      Previous Udhar: Rs {customer.balance.toLocaleString()}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={handleClearCustomer}
@@ -636,6 +641,15 @@ export function NewBillPage() {
                 Rs {total.toLocaleString()}
               </span>
             </div>
+
+            {customer && customer.balance > 0 && (
+              <div className="flex flex-wrap justify-between items-center gap-3 text-red-700 bg-red-50 p-2.5 rounded-lg border border-red-200">
+                <span className="text-xs font-semibold">Previous Udhar (Purana Baqaya)</span>
+                <span className="font-bold text-sm">
+                  Rs {customer.balance.toLocaleString()}
+                </span>
+              </div>
+            )}
 
             <div className="flex flex-wrap justify-between items-center gap-3 text-slate-700">
               <div className="flex flex-wrap items-center gap-2">

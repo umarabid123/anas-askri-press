@@ -17,19 +17,27 @@ export function AddCustomerModal({ isOpen, onClose, onAdd }: AddCustomerModalPro
   const [name, setName] = useState('')
   const [mobile, setMobile] = useState('')
   const [address, setAddress] = useState('')
-  const [errors, setErrors] = useState<{ name?: string; mobile?: string; general?: string }>({})
+  const [openingBalance, setOpeningBalance] = useState('')
+  const [errors, setErrors] = useState<{ name?: string; mobile?: string; openingBalance?: string; general?: string }>({})
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrors({})
 
-    const validation = customerSchema.safeParse({ name, mobile, address })
+    const parsedOpening = openingBalance.trim() === '' ? 0 : parseFloat(openingBalance)
+    const validation = customerSchema.safeParse({
+      name,
+      mobile,
+      address,
+      openingBalance: isNaN(parsedOpening) ? 0 : parsedOpening,
+    })
     if (!validation.success) {
-      const fieldErrors: { name?: string; mobile?: string } = {}
+      const fieldErrors: { name?: string; mobile?: string; openingBalance?: string } = {}
       for (const issue of validation.error.issues) {
         if (issue.path[0] === 'name') fieldErrors.name = issue.message
         if (issue.path[0] === 'mobile') fieldErrors.mobile = issue.message
+        if (issue.path[0] === 'openingBalance') fieldErrors.openingBalance = issue.message
       }
       setErrors(fieldErrors)
       return
@@ -42,6 +50,7 @@ export function AddCustomerModal({ isOpen, onClose, onAdd }: AddCustomerModalPro
       setName('')
       setMobile('')
       setAddress('')
+      setOpeningBalance('')
       onClose()
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Could not add the customer.')
@@ -97,6 +106,22 @@ export function AddCustomerModal({ isOpen, onClose, onAdd }: AddCustomerModalPro
           onChange={(e) => setAddress(e.target.value)}
           rows={2}
         />
+
+        <div>
+          <Input
+            type="number"
+            min="0"
+            step="any"
+            label="Opening Balance / Previous Udhar (Rs)"
+            placeholder="0"
+            value={openingBalance}
+            onChange={(e) => setOpeningBalance(e.target.value)}
+            error={errors.openingBalance}
+          />
+          <p className="text-[11px] text-slate-400 mt-1">
+            Previous credit owed by this customer (Purana Udhar/Baqaya). Added to customer's account and included in bill totals.
+          </p>
+        </div>
 
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>

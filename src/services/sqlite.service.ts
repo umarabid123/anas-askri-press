@@ -98,9 +98,25 @@ export async function restoreDatabase(input: unknown): Promise<boolean> {
 export async function getCustomers(): Promise<Customer[]> { if (isTauri()) return invoke('get_customers'); return readBrowser().customers.map(fromRow<Customer>) }
 export async function getCustomerById(id: string): Promise<Customer | null> { if (isTauri()) return invoke('get_customer_by_id', { customerId: id }); return (await getCustomers()).find(c => c.id === id) || null }
 export async function createCustomer(input: CustomerFormData): Promise<Customer> {
-  const customer = stamp({ ...customerSchema.parse(input), updatedAt: now(), id: crypto.randomUUID(), totalPurchase: 0, totalPaid: 0, balance: 0 }) as Customer
+  const data = customerSchema.parse(input)
+  const opening = roundMoney(Number(data.openingBalance) || 0)
+  const customer = stamp({ ...data, updatedAt: now(), id: crypto.randomUUID(), totalPurchase: opening, totalPaid: 0, balance: opening }) as Customer
   if (isTauri()) return invoke('create_customer', { customer })
-  return transaction(t => { t.customers.push(toRow(customer)); return customer })
+  return transaction(t => {
+    t.customers.push(toRow(customer))
+    if (opening > 0) {
+      t.customer_ledger.push(toRow(stamp({
+        id: crypto.randomUUID(),
+        customerId: customer.id,
+        date: customer.createdAt,
+        description: 'Opening Balance (Previous Udhar)',
+        debit: opening,
+        credit: 0,
+        balance: opening,
+      })))
+    }
+    return customer
+  })
 }
 export async function updateCustomer(customer: Customer): Promise<Customer> {
   const data = customerSchema.parse(customer)
