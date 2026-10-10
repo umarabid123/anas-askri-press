@@ -1,5 +1,5 @@
 import React from 'react'
-import { CalendarDays, CreditCard, FileText, Layers, Mail, MapPin, Palette, Phone, Scissors, UserRound } from 'lucide-react'
+import { CalendarDays, CreditCard, FileText, Layers, Mail, MapPin, Palette, Phone, QrCode, Scissors, UserRound } from 'lucide-react'
 import type { Customer, SaleItem, BusinessSettings } from '@/types'
 import { parseDate } from '@/utils/financial'
 import { invoiceAccountTotals } from '../invoice-data'
@@ -41,40 +41,12 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
     const filledItems = [...data.items]
     const emptyRowsCount = Math.max(0, minRows - filledItems.length)
 
-    const rawShopName = (settings?.businessName || 'ANAS ARKI PRESS').replace(/\s*&\s*LASER\s*CUTTING/i, '').trim()
-    let primaryName = 'ANAS ARKI'
-    let secondaryName = 'PRESS'
-    if (/\sPRESS\b/i.test(rawShopName)) {
-      const splitAt = rawShopName.search(/\sPRESS\b/i)
-      primaryName = rawShopName.slice(0, splitAt).trim()
-      secondaryName = rawShopName.slice(splitAt).trim()
-    } else if (rawShopName.includes('&')) {
-      const parts = rawShopName.split('&')
-      primaryName = parts[0].trim()
-      secondaryName = `& ${parts.slice(1).join('&').trim()}`
-    } else if (rawShopName.includes(' ')) {
-      const words = rawShopName.split(' ')
-      if (words.length > 2) {
-        primaryName = words.slice(0, 2).join(' ')
-        secondaryName = words.slice(2).join(' ')
-      } else {
-        primaryName = rawShopName
-        secondaryName = ''
-      }
-    } else {
-      primaryName = rawShopName
-      secondaryName = ''
-    }
-
-    const tagline = settings?.subtitle ?? 'PRECISION | QUALITY | YOUR VISION OUR WORK'
+    const ownerName = settings?.ownerName || 'Ali Asghar'
     const targetAddress = 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.'
-    const address = settings?.address && !settings.address.toLowerCase().includes('dhuddi wala') && settings.address !== 'Dhuddi wala Lower Canal Near Askari Bank Main Jaranwala Road'
-      ? settings.address
-      : targetAddress
-
+    const address = settings?.address || targetAddress
     const targetPhone = '03007973059'
-    const phone = (settings?.phone && settings.phone !== '0300-7973059') ? settings.phone : targetPhone
-    const email = 'barkatarkipress@outlook.com'
+    const phone = settings?.phone || targetPhone
+    const email = settings?.email || 'barkatarkipress@outlook.com'
     const footerText = settings?.footerText ?? 'Thank You For Your Business'
 
     // Formatted date (DD-MM-YYYY)
@@ -97,11 +69,11 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
     if (settings && settings.receiptPaperSize !== 'A4') return (
       <div id={id} ref={ref} className="bg-white p-3 text-black font-sans select-text" style={{ width: settings.receiptPaperSize, fontSize: settings.receiptPaperSize === '58mm' ? 10 : 12 }}>
         <div className="text-center border-b border-black pb-2">
-          <h1 className="font-bold text-sm">{primaryName} {secondaryName}</h1>
-          <p className="font-semibold text-xs">Ali Asghar</p>
+          <h1 className="font-bold text-sm">{settings?.businessName || 'ANAS ARKI PRESS'}</h1>
+          <p className="font-semibold text-xs">{ownerName}</p>
           <p>{address}</p>
           <p>{phone}</p>
-          <p>{email}</p>
+          {email && <p>{email}</p>}
         </div>
         <p className="font-bold mt-2">Invoice {data.invoiceNumber}</p><p>{formattedDate} · {data.paymentMethod.toUpperCase()}</p>
         {data.cancelledAt && <p className="text-center font-bold border border-black my-1">*** {data.cancelReason?.startsWith('Updated:') ? 'OLD BILL' : 'CANCELLED'} ***</p>}
@@ -146,24 +118,19 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
               {settings?.showLogo !== false && (
                 <img
                   src={settings?.logoPath || "/logo.png"}
-                  alt="Anas Arki Press logo"
-                  className="invoice-logo object-contain"
+                  alt={settings?.businessName || "Anas Arki Press"}
+                  className="invoice-main-logo object-contain"
                 />
               )}
-              <div className="invoice-brand-type">
-                <h1>{primaryName}</h1>
-                {secondaryName && <h2>{secondaryName}</h2>}
-                {tagline && <p>{tagline}</p>}
-              </div>
             </div>
             <div className="invoice-services">
               {services.map(({ Icon, label }) => <div key={label}><span><Icon aria-hidden="true" /></span><b>{label}</b></div>)}
             </div>
             <div className="invoice-contact">
-              <div className="invoice-shop-owner"><UserRound aria-hidden="true" /><span>Ali Asghar</span></div>
+              <div className="invoice-shop-owner"><UserRound aria-hidden="true" /><span>{ownerName}</span></div>
               {phone && <div className="invoice-shop-phone"><Phone aria-hidden="true" /><span>{phone}</span></div>}
               {address && <div className="invoice-shop-address"><MapPin aria-hidden="true" /><span>{address}</span></div>}
-              <div className="invoice-shop-email"><Mail aria-hidden="true" /><span>{email}</span></div>
+              {email && <div className="invoice-shop-email"><Mail aria-hidden="true" /><span>{email}</span></div>}
             </div>
           </header>
           <div className="invoice-title"><span>INVOICE</span></div>
@@ -197,14 +164,61 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
             </table>
           </div>
           <div className="invoice-bottom">
-            <section className="invoice-terms">
-              <h3><FileText aria-hidden="true" />Terms &amp; Conditions</h3>
-              <ul>
-                <li>Payment to be made at the time of delivery.</li>
-                <li>Goods once sold will not be taken back.</li>
-                <li>We are not responsible for any delay due to unforeseen circumstances.</li>
-                <li>Thank you for your business!</li>
-              </ul>
+            <section className="invoice-pay-online" aria-label="Pay Online">
+              <div className="invoice-pay-header">
+                <div className="invoice-pay-header-left">
+                  <QrCode aria-hidden="true" />
+                  <span>Pay Online</span>
+                </div>
+                <span className="invoice-pay-urdu" dir="rtl">آن لائن ادائیگی</span>
+              </div>
+              <div className="invoice-pay-body">
+                <div className="invoice-qr-box">
+                  {settings?.qrCodePath ? (
+                    <img src={settings.qrCodePath} alt="Pay Online QR Code" className="invoice-qr-img" />
+                  ) : (
+                    <div className="invoice-qr-placeholder" title="Scan QR Code to pay">
+                      <svg viewBox="0 0 100 100" className="invoice-qr-svg" aria-hidden="true">
+                        <rect x="5" y="5" width="28" height="28" rx="3" fill="#082e60" />
+                        <rect x="10" y="10" width="18" height="18" rx="2" fill="white" />
+                        <rect x="14" y="14" width="10" height="10" rx="1.5" fill="#082e60" />
+
+                        <rect x="67" y="5" width="28" height="28" rx="3" fill="#082e60" />
+                        <rect x="72" y="10" width="18" height="18" rx="2" fill="white" />
+                        <rect x="76" y="14" width="10" height="10" rx="1.5" fill="#082e60" />
+
+                        <rect x="5" y="67" width="28" height="28" rx="3" fill="#082e60" />
+                        <rect x="10" y="72" width="18" height="18" rx="2" fill="white" />
+                        <rect x="14" y="76" width="10" height="10" rx="1.5" fill="#082e60" />
+
+                        <rect x="70" y="70" width="18" height="18" rx="2" fill="#082e60" />
+                        <rect x="74" y="74" width="10" height="10" rx="1" fill="white" />
+                        <rect x="77" y="77" width="4" height="4" fill="#082e60" />
+
+                        <path d="M38 7h4v4h-4zM47 7h4v4h-4zM56 7h4v4h-4zM7 38h4v4H7zM7 47h4v4H7zM7 56h4v4H7z" fill="#dca312" />
+                        <path d="M38 16h4v4h-4zM47 16h4v4h-4zM56 16h4v4h-4zM38 25h4v4h-4zM47 25h4v4h-4zM56 25h4v4h-4z" fill="#082e60" />
+                        <path d="M38 38h7v7h-7zM50 38h5v5h-5zM60 38h6v6h-6zM70 38h6v6h-6zM80 38h7v7h-7z" fill="#082e60" />
+                        <path d="M16 38h5v5h-5zM25 38h6v6h-6zM38 50h6v6h-6zM50 48h7v7h-7zM62 48h5v5h-5zM75 50h7v7h-7z" fill="#dca312" />
+                        <path d="M16 48h6v6h-6zM26 48h5v5h-5zM38 60h6v6h-6zM48 60h6v6h-6zM58 60h6v6h-6z" fill="#082e60" />
+                        <path d="M38 72h5v5h-5zM48 72h6v6h-6zM58 72h5v5h-5zM38 82h6v6h-6zM48 82h5v5h-5zM58 82h6v6h-6z" fill="#082e60" />
+                        <path d="M16 58h6v6h-6zM26 58h5v5h-5zM85 70h5v5h-5zM85 80h6v6h-6z" fill="#dca312" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="invoice-pay-details">
+                  <div className="invoice-pay-inst">
+                    <strong>Scan QR Code to Pay Online</strong>
+                    <span dir="rtl" className="invoice-pay-inst-ur">کسی بھی بینک ایپ یا راست سے اسکین کریں</span>
+                  </div>
+                  <div className="invoice-pay-badges">
+                    <span className="invoice-pay-badge">Raast</span>
+                    <span className="invoice-pay-badge">JazzCash</span>
+                    <span className="invoice-pay-badge">EasyPaisa</span>
+                    <span className="invoice-pay-badge">Bank App</span>
+                  </div>
+                </div>
+              </div>
             </section>
             <section className="invoice-totals" aria-label="Bill totals">
               <div className="invoice-total-row"><span>Sub Total</span><strong>{money(data.total)} <small>Rs.</small></strong></div>

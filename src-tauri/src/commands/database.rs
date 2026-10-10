@@ -247,10 +247,16 @@ pub struct BusinessSettingsDto {
     #[serde(rename = "businessName")]
     pub business_name: String,
     pub subtitle: String,
+    #[serde(rename = "ownerName", default)]
+    pub owner_name: Option<String>,
     pub phone: String,
+    #[serde(default)]
+    pub email: Option<String>,
     pub address: String,
     #[serde(rename = "logoPath")]
     pub logo_path: Option<String>,
+    #[serde(rename = "qrCodePath", default)]
+    pub qr_code_path: Option<String>,
     #[serde(rename = "invoicePrefix")]
     pub invoice_prefix: String,
     #[serde(rename = "nextInvoiceNumber")]
@@ -1344,15 +1350,19 @@ pub fn get_sales(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SaleRe
 pub fn get_business_settings(state: State<DbState>) -> Result<BusinessSettingsDto, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
 
+    let _ = conn.execute("ALTER TABLE business_settings ADD COLUMN owner_name TEXT", []);
+    let _ = conn.execute("ALTER TABLE business_settings ADD COLUMN email TEXT", []);
+    let _ = conn.execute("ALTER TABLE business_settings ADD COLUMN qr_code_path TEXT", []);
+
     let _ = conn.execute(
-        "INSERT OR IGNORE INTO business_settings (id, business_name, subtitle, phone, address, invoice_prefix, next_invoice_number)
-         VALUES ('default', 'ANAS ARKI PRESS', 'PRECISION | QUALITY | YOUR VISION OUR WORK', '03007973059', 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.', 'ARKI', 1001)",
+        "INSERT OR IGNORE INTO business_settings (id, business_name, subtitle, phone, address, invoice_prefix, next_invoice_number, owner_name, email)
+         VALUES ('default', 'ANAS ARKI PRESS', 'PRECISION | QUALITY | YOUR VISION OUR WORK', '03007973059', 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.', 'ARKI', 1001, 'Ali Asghar', 'barkatarkipress@outlook.com')",
         [],
     );
 
     let mut stmt = conn
         .prepare(
-            "SELECT id, business_name, subtitle, phone, address, logo_path, invoice_prefix, next_invoice_number, receipt_paper_size, footer_text, show_logo, default_printer, currency, currency_symbol
+            "SELECT id, business_name, subtitle, phone, address, logo_path, invoice_prefix, next_invoice_number, receipt_paper_size, footer_text, show_logo, default_printer, currency, currency_symbol, owner_name, email, qr_code_path
              FROM business_settings
              WHERE id = 'default'"
         )
@@ -1375,6 +1385,9 @@ pub fn get_business_settings(state: State<DbState>) -> Result<BusinessSettingsDt
             default_printer: row.get(11)?,
             currency: row.get(12)?,
             currency_symbol: row.get(13)?,
+            owner_name: row.get(14)?,
+            email: row.get(15)?,
+            qr_code_path: row.get(16)?,
         })
     }).map_err(|e| e.to_string())?;
 
@@ -1388,6 +1401,10 @@ pub fn update_business_settings(
 ) -> Result<BusinessSettingsDto, String> {
     if settings.business_name.trim().is_empty() || settings.invoice_prefix.trim().is_empty() || settings.next_invoice_number < 1 || !["A4", "80mm", "58mm"].contains(&settings.receipt_paper_size.as_str()) { return Err("Invalid invoice settings".into()); }
     let conn = state.0.lock().map_err(|e| e.to_string())?;
+
+    let _ = conn.execute("ALTER TABLE business_settings ADD COLUMN owner_name TEXT", []);
+    let _ = conn.execute("ALTER TABLE business_settings ADD COLUMN email TEXT", []);
+    let _ = conn.execute("ALTER TABLE business_settings ADD COLUMN qr_code_path TEXT", []);
 
     conn.execute(
         "UPDATE business_settings
@@ -1404,6 +1421,9 @@ pub fn update_business_settings(
              default_printer = ?11,
              currency = ?12,
              currency_symbol = ?13,
+             owner_name = ?14,
+             email = ?15,
+             qr_code_path = ?16,
              updated_at = datetime('now')
          WHERE id = 'default'",
         params![
@@ -1420,6 +1440,9 @@ pub fn update_business_settings(
             settings.default_printer,
             settings.currency,
             settings.currency_symbol,
+            settings.owner_name,
+            settings.email,
+            settings.qr_code_path,
         ],
     ).map_err(|e| e.to_string())?;
 

@@ -15,9 +15,10 @@ export interface CreateSaleInput {
 }
 export const DEFAULT_SETTINGS: BusinessSettings = {
   id: 'default', businessName: 'ANAS ARKI PRESS', subtitle: 'PRECISION | QUALITY | YOUR VISION OUR WORK',
-  phone: '03007973059', address: 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.',
+  ownerName: 'Ali Asghar', phone: '03007973059', email: 'barkatarkipress@outlook.com',
+  address: 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.',
   invoicePrefix: 'ARKI', nextInvoiceNumber: 1001, receiptPaperSize: 'A4', footerText: 'Thank you for your business!',
-  showLogo: true, currency: 'PKR', currencySymbol: 'Rs',
+  showLogo: true, currency: 'PKR', currencySymbol: 'Rs', qrCodePath: '',
 }
 const STORAGE_KEY = 'arki_database_v2'
 const LEGACY: Partial<Record<TableName, string>> = { customers: 'arki_customers_v1', sales: 'arki_sales_v1', mazdoors: 'arki_mazdoors_v1', mazdoori_entries: 'arki_mazdoori_entries_v1', customer_ledger: 'arki_ledger_v1', payments: 'arki_payments_v1', business_settings: 'arki_settings_v1' }
@@ -462,8 +463,11 @@ export async function getBusinessSettings(): Promise<BusinessSettings> {
   const settings: BusinessSettings = {
     ...raw,
     businessName: raw.businessName?.replace(/\s*&\s*LASER\s*CUTTING/i, '').trim() || DEFAULT_SETTINGS.businessName,
+    ownerName: raw.ownerName || DEFAULT_SETTINGS.ownerName,
     phone: (raw.phone && raw.phone !== '0300-7973059') ? raw.phone : DEFAULT_SETTINGS.phone,
+    email: raw.email || DEFAULT_SETTINGS.email,
     address: (raw.address && !raw.address.toLowerCase().includes('dhuddi wala')) ? raw.address : DEFAULT_SETTINGS.address,
+    qrCodePath: raw.qrCodePath || DEFAULT_SETTINGS.qrCodePath,
   }
   useBusinessSettingsStore.getState().setSettings(settings)
   return settings

@@ -131,9 +131,12 @@ export interface BusinessSettings {
   id?: string
   businessName: string
   subtitle: string
+  ownerName?: string
   phone: string
+  email?: string
   address: string
   logoPath?: string
+  qrCodePath?: string
   invoicePrefix: string
   nextInvoiceNumber: number
   receiptPaperSize: '80mm' | '58mm' | 'A4'

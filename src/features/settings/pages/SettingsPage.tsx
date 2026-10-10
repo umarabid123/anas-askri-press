@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { toast } from '@/stores/toast.store'
-import { Check, Loader2, Printer, Save, Store } from 'lucide-react'
+import { Check, Image as ImageIcon, Loader2, Printer, QrCode, Save, Store, Trash2, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
@@ -23,6 +23,9 @@ export function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const qrInputRef = useRef<HTMLInputElement>(null)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     async function load() {
@@ -50,7 +53,7 @@ export function SettingsPage() {
     try {
       const updated = await updateBusinessSettings(settings)
       setSettings(updated)
-      toast.success('Shop settings saved.')
+      toast.success('Shop settings saved successfully.')
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     } catch (err: unknown) {
@@ -59,6 +62,32 @@ export function SettingsPage() {
     } finally {
       setIsSaving(false)
     }
+  }
+
+  const handleQrUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setSettings(prev => ({ ...prev, qrCodePath: reader.result as string }))
+        toast.success('QR Code image selected. Click Save Settings to apply.')
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        setSettings(prev => ({ ...prev, logoPath: reader.result as string }))
+        toast.success('Logo image selected. Click Save Settings to apply.')
+      }
+    }
+    reader.readAsDataURL(file)
   }
 
   if (isLoading) {
@@ -74,9 +103,9 @@ export function SettingsPage() {
       {/* Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <PageTitle>Shop & System Settings</PageTitle>
+          <PageTitle>Shop &amp; System Settings</PageTitle>
           <p className="text-xs text-slate-500 mt-0.5">
-            Configure shop letterhead details, invoice numbering, printing format, and data backups
+            Configure shop letterhead details, online payment QR code, invoice numbering, and data backups
           </p>
         </div>
 
@@ -104,7 +133,7 @@ export function SettingsPage() {
       <Card className="p-5 space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
           <Store className="w-4 h-4 text-blue-600" />
-          <SectionTitle>Shop & Letterhead Information</SectionTitle>
+          <SectionTitle>Shop &amp; Letterhead Information</SectionTitle>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -115,30 +144,39 @@ export function SettingsPage() {
             required
           />
           <Input
-            label="Tagline / Subtitle"
-            value={settings.subtitle}
-            onChange={(e) => setSettings({ ...settings, subtitle: e.target.value })}
+            label="Owner / Contact Person Name"
+            placeholder="e.g. Ali Asghar"
+            value={settings.ownerName || ''}
+            onChange={(e) => setSettings({ ...settings, ownerName: e.target.value })}
           />
           <Input
             label="Phone Number(s)"
-            placeholder="0300-7973059"
+            placeholder="03007973059"
             value={settings.phone}
             onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
             required
           />
           <Input
+            label="Email Address"
+            placeholder="e.g. barkatarkipress@outlook.com"
+            value={settings.email || ''}
+            onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+          />
+          <Input
+            label="Tagline / Subtitle"
+            value={settings.subtitle}
+            onChange={(e) => setSettings({ ...settings, subtitle: e.target.value })}
+          />
+          <Input
             label="Currency Code"
             value={settings.currency}
-            onChange={(e) => {
-              const val = e.target.value
-              setSettings({ ...settings, currency: val })
-            }}
+            onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
           />
         </div>
 
         <Textarea
           label="Shop Address / Location"
-          placeholder="Dhuddi wala Lower Canal Near Askari Bandk Main Jaranwala Road"
+          placeholder="Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan."
           value={settings.address}
           onChange={(e) => setSettings({ ...settings, address: e.target.value })}
           rows={2}
@@ -146,11 +184,122 @@ export function SettingsPage() {
         />
       </Card>
 
+      {/* Pay Online QR Code Card */}
+      <Card className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
+          <QrCode className="w-4 h-4 text-amber-600" />
+          <SectionTitle>Pay Online QR Code</SectionTitle>
+        </div>
+        <p className="text-xs text-slate-500">
+          Upload your Raast, JazzCash, EasyPaisa, or Bank QR Code image to appear directly on the bill for customers to scan and pay online.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-5 pt-1">
+          <div className="w-24 h-24 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex items-center justify-center overflow-hidden p-1 shadow-inner">
+            {settings.qrCodePath ? (
+              <img src={settings.qrCodePath} alt="Custom QR Code" className="w-full h-full object-contain" />
+            ) : (
+              <div className="text-center p-2">
+                <QrCode className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                <span className="text-[10px] text-slate-400 block font-medium">Default QR</span>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <input
+              type="file"
+              ref={qrInputRef}
+              onChange={handleQrUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => qrInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>{settings.qrCodePath ? 'Replace QR Code Image' : 'Upload QR Code Image'}</span>
+              </Button>
+              {settings.qrCodePath && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSettings(prev => ({ ...prev, qrCodePath: '' }))}
+                  className="flex items-center gap-1.5 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Remove Custom QR</span>
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">Supported formats: PNG, JPG, WebP. Recommended: Square image (e.g. 500x500).</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Shop Logo Setup */}
+      <Card className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
+          <ImageIcon className="w-4 h-4 text-blue-600" />
+          <SectionTitle>Shop Logo Image</SectionTitle>
+        </div>
+        <p className="text-xs text-slate-500">
+          Customize the logo shown on the upper side of the bill letterhead.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-5 pt-1">
+          <div className="w-32 h-20 rounded-xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden p-2 shadow-xs">
+            <img
+              src={settings.logoPath || '/logo.png'}
+              alt="Shop Logo"
+              className="w-full h-full object-contain"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <input
+              type="file"
+              ref={logoInputRef}
+              onChange={handleLogoUpload}
+              accept="image/*"
+              className="hidden"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => logoInputRef.current?.click()}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload New Logo</span>
+              </Button>
+              {settings.logoPath && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSettings(prev => ({ ...prev, logoPath: '' }))}
+                  className="flex items-center gap-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset to Default Logo</span>
+                </Button>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">Supported formats: PNG, JPG, WebP.</p>
+          </div>
+        </div>
+      </Card>
+
       {/* Invoice & Printing Formats */}
       <Card className="p-5 space-y-4">
         <div className="flex flex-wrap items-center gap-2 text-slate-800 font-semibold border-b border-slate-100 pb-2">
           <Printer className="w-4 h-4 text-blue-600" />
-          <SectionTitle>Invoice & Printing Setup</SectionTitle>
+          <SectionTitle>Invoice &amp; Printing Setup</SectionTitle>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
