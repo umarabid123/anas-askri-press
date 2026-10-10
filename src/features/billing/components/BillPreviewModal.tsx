@@ -24,6 +24,7 @@ interface BillPreviewModalProps {
   onNewBill: () => void
   // Called after the invoice is cancelled, to reload the list behind the popup
   onCancelled?: () => void
+  autoWhatsApp?: boolean
 }
 
 const PNG_OPTIONS = { pixelRatio: 3, backgroundColor: '#ffffff', cacheBust: true }
@@ -34,6 +35,7 @@ export function BillPreviewModal({
   onClose,
   onNewBill,
   onCancelled,
+  autoWhatsApp = false,
 }: BillPreviewModalProps) {
   const navigate = useNavigate()
   const invoiceRef = useRef<HTMLDivElement>(null)
@@ -50,6 +52,21 @@ export function BillPreviewModal({
   const [accountSnapshot, setAccountSnapshot] = useState<{ data: ShopInvoiceData; previousBalance: number } | null>(null)
   const accountReady = !!data && (data.previousBalance !== undefined || (!data.customerId && !data.customer?.id) || accountSnapshot?.data === data)
   const invoiceData = data ? { ...data, previousBalance: data.previousBalance ?? (accountSnapshot?.data === data ? accountSnapshot.previousBalance : 0) } : null
+
+  const hasAutoShared = useRef(false)
+  useEffect(() => {
+    if (!isOpen) {
+      hasAutoShared.current = false
+      return
+    }
+    if (autoWhatsApp && accountReady && !hasAutoShared.current && !isGeneratingPng) {
+      hasAutoShared.current = true
+      const timer = setTimeout(() => {
+        void handleWhatsAppShare()
+      }, 400)
+      return () => clearTimeout(timer)
+    }
+  }, [isOpen, autoWhatsApp, accountReady, isGeneratingPng])
 
   useEffect(() => {
     if (!isOpen || !data || data.previousBalance !== undefined) return
@@ -201,9 +218,29 @@ export function BillPreviewModal({
 
       const phone = (data.customerPhone || data.customer?.mobile || '').replace(/[^0-9]/g, '')
       // Ensure international format (Pakistan: 92300xxxxxxx)
-      const formattedPhone = phone.startsWith('0') ? `92${phone.slice(1)}` : phone
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': image })])
-      await openWhatsApp(`https://wa.me/${formattedPhone}`)
+      let formattedPhone = phone
+      if (phone.startsWith('0')) {
+        formattedPhone = `92${phone.slice(1)}`
+      } else if (phone.length === 10 && phone.startsWith('3')) {
+        formattedPhone = `92${phone}`
+      }
+
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': image })])
+      } catch (clipErr) {
+        console.warn('Clipboard write warning:', clipErr)
+      }
+
+      const shop = settings?.businessName || 'Anas Arki Press & Laser Cutting'
+      const invoiceLabel = data.invoiceNumber ? ` #${data.invoiceNumber}` : ''
+      const totalLabel = data.total !== undefined ? ` (Total: Rs ${data.total.toLocaleString()})` : ''
+      const textMsg = `Assalam-o-Alaikum! Here is your bill${invoiceLabel} from ${shop}${totalLabel}.`
+
+      const waUrl = formattedPhone
+        ? `https://wa.me/${formattedPhone}?text=${encodeURIComponent(textMsg)}`
+        : `https://wa.me/?text=${encodeURIComponent(textMsg)}`
+
+      await openWhatsApp(waUrl)
       setShareNotice('Invoice image copied. In the WhatsApp chat press Ctrl+V, then Send.')
       toast.info('Bill image copied. Paste it into WhatsApp with Ctrl+V.')
     } catch (err) {

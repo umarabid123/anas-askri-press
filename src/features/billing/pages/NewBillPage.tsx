@@ -75,6 +75,7 @@ export function NewBillPage() {
   const [activeMazdooriItemId, setActiveMazdooriItemId] = useState<string | null>(null)
   const [previewInvoiceData, setPreviewInvoiceData] = useState<ShopInvoiceData | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [autoWhatsApp, setAutoWhatsApp] = useState(false)
 
   // Saving state & feedback
   const [isSaving, setIsSaving] = useState(false)
@@ -248,6 +249,7 @@ export function NewBillPage() {
         catch (err) { toast.error('Bill saved, but previous dues could not be loaded: ' + String(err)) }
       }
       resetCart()
+      setAutoWhatsApp(andThen === 'whatsapp')
       setPreviewInvoiceData(preview)
       setIsPreviewOpen(true)
       toast.success(`Bill #${invoiceNumber} ${editingSale ? 'updated' : 'saved'}.`)
@@ -308,6 +310,7 @@ export function NewBillPage() {
     resetCart()
     setIsPreviewOpen(false)
     setPreviewInvoiceData(null)
+    setAutoWhatsApp(false)
     setErrorMessage(null)
   }
 
@@ -879,7 +882,11 @@ export function NewBillPage() {
       <BillPreviewModal
         isOpen={isPreviewOpen}
         data={previewInvoiceData}
-        onClose={() => setIsPreviewOpen(false)}
+        autoWhatsApp={autoWhatsApp}
+        onClose={() => {
+          setIsPreviewOpen(false)
+          setAutoWhatsApp(false)
+        }}
         onNewBill={handleStartNewBill}
       />
     </div>
