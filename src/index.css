@@ -488,12 +488,6 @@
   text-align: right;
 }
 
-.invoice-empty-row span {
-  display: block;
-  margin: 9px 5px 0;
-  border-bottom: 1px solid #8da1b9;
-}
-
 .invoice-bottom {
   display: grid;
   grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr);

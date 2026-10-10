@@ -158,7 +158,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
                   <td>{index + 1}</td><td dir="auto">{item.itemName}</td><td>{money(item.quantity)}{item.unit?.toLowerCase() === 'qty' ? ' Qty' : ' kg'}</td><td>{money(item.rate)}</td><td>{money(item.amount)}</td>
                 </tr>)}
                 {Array.from({ length: emptyRowsCount }, (_, i) => <tr key={`empty-${i}`} className="invoice-empty-row" aria-hidden="true">
-                  <td>{filledItems.length + i + 1}</td><td /><td /><td><span /></td><td><span /></td>
+                  <td>{filledItems.length + i + 1}</td><td /><td /><td /><td />
                 </tr>)}
               </tbody>
             </table>
