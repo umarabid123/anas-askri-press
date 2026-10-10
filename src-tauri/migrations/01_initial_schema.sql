@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
     rate REAL NOT NULL DEFAULT 0.0,
     mazdoori REAL NOT NULL DEFAULT 0.0,
     amount REAL NOT NULL DEFAULT 0.0,
+    unit TEXT NOT NULL DEFAULT 'kg',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

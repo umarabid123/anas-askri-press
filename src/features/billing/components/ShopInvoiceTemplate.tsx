@@ -98,7 +98,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
         <div className="border-y border-dashed border-black my-2 py-2">
           {data.items.map((item, index) => <div key={item.id || index} className="mb-2">
             <p className="font-semibold break-words">{index + 1}. {item.itemName}</p>
-            <div className="flex justify-between gap-2"><span>{item.quantity} × {item.rate.toLocaleString()}</span><b>{item.amount.toLocaleString()}</b></div>
+            <div className="flex justify-between gap-2"><span>{item.quantity}{item.unit?.toLowerCase() === 'qty' ? ' Qty' : ' kg'} × {item.rate.toLocaleString()}</span><b>{item.amount.toLocaleString()}</b></div>
           </div>)}
         </div>
         {([
@@ -179,7 +179,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
               <thead><tr><th scope="col">Sr.</th><th scope="col">Description</th><th scope="col">Qty/Kg</th><th scope="col">Rate (Rs.)</th><th scope="col">Amount (Rs.)</th></tr></thead>
               <tbody>
                 {filledItems.map((item, index) => <tr key={item.id || index}>
-                  <td>{index + 1}</td><td dir="auto">{item.itemName}</td><td>{money(item.quantity)}</td><td>{money(item.rate)}</td><td>{money(item.amount)}</td>
+                  <td>{index + 1}</td><td dir="auto">{item.itemName}</td><td>{money(item.quantity)}{item.unit?.toLowerCase() === 'qty' ? ' Qty' : ' kg'}</td><td>{money(item.rate)}</td><td>{money(item.amount)}</td>
                 </tr>)}
                 {Array.from({ length: emptyRowsCount }, (_, i) => <tr key={`empty-${i}`} className="invoice-empty-row" aria-hidden="true">
                   <td>{filledItems.length + i + 1}</td><td /><td /><td><span /></td><td><span /></td>

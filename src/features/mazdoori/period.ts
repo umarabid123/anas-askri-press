@@ -46,8 +46,13 @@ export function mazdooriLedger(sales: Sale[]) {
   let totalWeight = 0
   return [...sales].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() || a.id.localeCompare(b.id)).map(sale => {
     const mazdoori = roundMoney(sale.totalMazdoori || 0)
-    // Weight comes from the quantities saved in the bill's Qty/Kg fields.
-    const weight = roundMoney(sale.items.reduce((sum, item) => sum + item.quantity, 0))
+    // Weight comes only from items whose unit is 'kg' (QTY items are excluded from weight).
+    const weight = roundMoney(
+      sale.items.reduce((sum, item) => {
+        const isKg = (item.unit || 'kg').toLowerCase() === 'kg'
+        return sum + (isKg ? item.quantity : 0)
+      }, 0)
+    )
     if (!sale.cancelledAt) {
       totalMazdoori = roundMoney(totalMazdoori + mazdoori)
       totalWeight = roundMoney(totalWeight + weight)

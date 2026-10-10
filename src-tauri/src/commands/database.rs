@@ -48,6 +48,8 @@ pub struct SaleItemDto {
     #[serde(rename = "mazdooriTasks", default)]
     pub mazdoori_tasks: Vec<ItemMazdooriTaskDto>,
     pub amount: f64,
+    #[serde(default)]
+    pub unit: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -448,8 +450,8 @@ fn create_sale_in_transaction(mut sale: CreateSaleDto, tx: &rusqlite::Transactio
     for item in &sale.items {
         let item_id = Uuid::new_v4().to_string();
         tx.execute(
-            "INSERT INTO sale_items (id, sale_id, item_id, item_name, quantity, rate, mazdoori, amount)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO sale_items (id, sale_id, item_id, item_name, quantity, rate, mazdoori, amount, unit)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 item_id,
                 sale_id,
@@ -459,6 +461,7 @@ fn create_sale_in_transaction(mut sale: CreateSaleDto, tx: &rusqlite::Transactio
                 item.rate,
                 item.mazdoori,
                 item.amount,
+                item.unit.clone().unwrap_or_else(|| "kg".to_string()),
             ],
         ).map_err(|e| e.to_string())?;
 
@@ -1311,8 +1314,8 @@ pub fn get_sales(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SaleRe
         sales.push(r.map_err(|e| e.to_string())?);
     }
     for sale in &mut sales {
-        let mut stmt = conn.prepare("SELECT id,item_id,item_name,quantity,rate,mazdoori,amount FROM sale_items WHERE sale_id=?1 ORDER BY rowid").map_err(|e| e.to_string())?;
-        sale.items = stmt.query_map(params![sale.id], |r| Ok(SaleItemDto { id: Some(r.get(0)?), item_id: r.get(1)?, item_name: r.get(2)?, quantity: r.get(3)?, rate: r.get(4)?, mazdoori: r.get(5)?, amount: r.get(6)?, mazdoori_tasks: Vec::new() })).map_err(|e| e.to_string())?.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare("SELECT id,item_id,item_name,quantity,rate,mazdoori,amount,unit FROM sale_items WHERE sale_id=?1 ORDER BY rowid").map_err(|e| e.to_string())?;
+        sale.items = stmt.query_map(params![sale.id], |r| Ok(SaleItemDto { id: Some(r.get(0)?), item_id: r.get(1)?, item_name: r.get(2)?, quantity: r.get(3)?, rate: r.get(4)?, mazdoori: r.get(5)?, amount: r.get(6)?, unit: r.get::<_, Option<String>>(7)?.or_else(|| Some("kg".to_string())), mazdoori_tasks: Vec::new() })).map_err(|e| e.to_string())?.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
         for item in &mut sale.items {
             let mut tasks = conn.prepare("SELECT id,title,amount,worker_name FROM sale_item_mazdoori_tasks WHERE sale_item_id=?1 ORDER BY rowid").map_err(|e| e.to_string())?;
             item.mazdoori_tasks = tasks.query_map(params![item.id], |r| Ok(ItemMazdooriTaskDto { id: Some(r.get(0)?), title: r.get(1)?, amount: r.get(2)?, worker_name: r.get(3)? })).map_err(|e| e.to_string())?.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
@@ -1557,8 +1560,8 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
     for item in &sale.items {
         let item_id = Uuid::new_v4().to_string();
         tx.execute(
-            "INSERT INTO sale_items (id, sale_id, item_id, item_name, quantity, rate, mazdoori, amount)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO sale_items (id, sale_id, item_id, item_name, quantity, rate, mazdoori, amount, unit)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 item_id,
                 sale_id,
@@ -1568,6 +1571,7 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
                 item.rate,
                 item.mazdoori,
                 item.amount,
+                item.unit.clone().unwrap_or_else(|| "kg".to_string()),
             ],
         ).map_err(|e| e.to_string())?;
 

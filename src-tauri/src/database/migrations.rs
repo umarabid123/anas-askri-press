@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS sale_items (
     rate REAL NOT NULL DEFAULT 0.0,
     mazdoori REAL NOT NULL DEFAULT 0.0,
     amount REAL NOT NULL DEFAULT 0.0,
+    unit TEXT NOT NULL DEFAULT 'kg',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -212,6 +213,10 @@ pub const MIGRATION_04_SQL: &str = r#"
 ALTER TABLE items ADD COLUMN urdu_name TEXT;
 "#;
 
+pub const MIGRATION_05_SQL: &str = r#"
+ALTER TABLE sale_items ADD COLUMN unit TEXT NOT NULL DEFAULT 'kg';
+"#;
+
 pub fn run_migrations(conn: &mut Connection) -> Result<()> {
     // 1. Ensure migrations table
     conn.execute_batch(
@@ -291,6 +296,29 @@ pub fn run_migrations(conn: &mut Connection) -> Result<()> {
         )?;
         tx.commit()?;
         log::info!("Migration 04 applied successfully");
+    }
+
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM schema_migrations WHERE version = 5",
+        [],
+        |row| row.get(0),
+    )?;
+
+    if count == 0 {
+        log::info!("Running Migration 05: Sale items unit");
+        let tx = conn.transaction()?;
+        let mut pragma = tx.prepare("PRAGMA table_info(sale_items)")?;
+        let columns: Vec<String> = pragma.query_map([], |r| r.get(1))?.collect::<Result<Vec<String>, _>>()?;
+        drop(pragma);
+        if !columns.contains(&"unit".to_string()) {
+            tx.execute_batch(MIGRATION_05_SQL)?;
+        }
+        tx.execute(
+            "INSERT INTO schema_migrations (version, name, applied_at) VALUES (?1, ?2, datetime('now'))",
+            params![5, "05_sale_items_unit"],
+        )?;
+        tx.commit()?;
+        log::info!("Migration 05 applied successfully");
     }
 
     Ok(())

@@ -43,7 +43,7 @@ interface CartState {
 }
 
 const createInitialItems = (): SaleItem[] => [
-  { id: crypto.randomUUID(), itemName: '', quantity: 0, rate: 0, mazdoori: 0, mazdooriTasks: [], amount: 0 },
+  { id: crypto.randomUUID(), itemName: '', quantity: 0, unit: 'kg', rate: 0, mazdoori: 0, mazdooriTasks: [], amount: 0 },
 ]
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -52,7 +52,7 @@ export const useCartStore = create<CartState>((set, get) => ({
   draftId: crypto.randomUUID(),
   useItemsAsNewBill: () => set(state => ({ draftId: crypto.randomUUID(), editingSale: null, paidAmount: 0, paymentMethod: 'cash', notes: state.notes.split('\n').filter(line => !line.startsWith('Updated from bill #')).join('\n') })),
   editingSale: null,
-  editBill: (sale, customer) => set({ draftId: crypto.randomUUID(), editingSale: structuredClone(sale), customer, items: structuredClone(sale.items).map(item => ({ ...item, amount: calculateItemAmount(item.quantity, item.rate) })), discount: sale.discount, paidAmount: sale.paidAmount, paymentMethod: sale.paymentMethod, notes: sale.notes || '' }),
+  editBill: (sale, customer) => set({ draftId: crypto.randomUUID(), editingSale: structuredClone(sale), customer, items: structuredClone(sale.items).map(item => ({ ...item, unit: item.unit || 'kg', amount: calculateItemAmount(item.quantity, item.rate) })), discount: sale.discount, paidAmount: sale.paidAmount, paymentMethod: sale.paymentMethod, notes: sale.notes || '' }),
   customer: null,
   items: createInitialItems(),
   discount: 0,
@@ -71,6 +71,7 @@ export const useCartStore = create<CartState>((set, get) => ({
         id: crypto.randomUUID(),
         itemName: item?.itemName || '',
         quantity,
+        unit: item?.unit || 'kg',
         rate,
         mazdoori,
         mazdooriTasks: item?.mazdooriTasks || [],

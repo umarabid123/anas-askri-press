@@ -35,7 +35,7 @@ export function buildChanges(backup: Backup, queue: SyncQueueRecord[]): Change[]
     ...change,
     row: Object.fromEntries(
       Object.entries(change.row)
-        .filter(([key, value]) => !(key === 'urdu_name' && (value === null || value === undefined || value === '')))
+        .filter(([key, value]) => !(key === 'urdu_name' && (value === null || value === undefined || value === '')) && key !== 'unit')
         .map(([key, value]) => [
           key,
           ['created_at', 'updated_at', 'payment_date', 'date'].includes(key) && typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)

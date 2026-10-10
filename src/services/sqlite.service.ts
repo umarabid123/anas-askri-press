@@ -49,7 +49,7 @@ function readBrowser(): Tables {
     else if (table === 'sales') for (const sale of value as Sale[]) {
       tables.sales.push(toRow({ ...sale, syncStatus: sale.syncStatus || 'pending' }))
       for (const item of sale.items || []) {
-        tables.sale_items.push(toRow({ ...item, saleId: sale.id, itemId: null, createdAt: sale.createdAt }))
+        tables.sale_items.push(toRow({ ...item, saleId: sale.id, itemId: null, unit: item.unit || 'kg', createdAt: sale.createdAt }))
         for (const task of item.mazdooriTasks || []) tables.sale_item_mazdoori_tasks.push({ id: task.id, sale_item_id: item.id, title: task.title, amount: task.amount, worker_name: task.workerName || task.mazdoorName || null, created_at: sale.createdAt })
       }
     }
@@ -182,7 +182,7 @@ function createSaleInTables(t: Tables, input: CreateSaleInput): string {
     const sale = stamp({ ...input, ...bill, invoiceNumber, id: input.id || crypto.randomUUID() })
     t.sales.push(toRow(sale))
     for (const item of bill.items) {
-      const itemId = crypto.randomUUID(); t.sale_items.push(toRow({ ...item, id: itemId, saleId: sale.id, itemId: null, createdAt: sale.createdAt }))
+      const itemId = crypto.randomUUID(); t.sale_items.push(toRow({ ...item, id: itemId, saleId: sale.id, itemId: null, unit: item.unit || 'kg', createdAt: sale.createdAt }))
       for (const task of item.mazdooriTasks || []) {
         t.sale_item_mazdoori_tasks.push({ id: crypto.randomUUID(), sale_item_id: itemId, title: task.title, amount: task.amount, worker_name: task.workerName || null, created_at: sale.createdAt })
         if (!task.workerName) continue
@@ -291,6 +291,7 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
         rate: item.rate,
         mazdoori: item.mazdoori,
         amount: item.amount,
+        unit: item.unit || 'kg',
       })))
       for (const task of item.mazdooriTasks || []) t.sale_item_mazdoori_tasks.push({ id: task.id || crypto.randomUUID(), sale_item_id: itemId, title: task.title, amount: task.amount, worker_name: task.workerName || null, created_at: sale.created_at })
     }
@@ -435,7 +436,7 @@ export async function payMazdoor(payment: { mazdoorId: string; amount: number; n
 export async function getSales(limit = -1): Promise<Sale[]> {
   if (isTauri()) return invoke('get_sales', { limit })
   const t = readBrowser()
-  const sales = t.sales.map(r => ({ ...fromRow<Sale>(r), items: t.sale_items.filter(i => i.sale_id === r.id).map(i => ({ ...fromRow<SaleItem>(i), mazdooriTasks: t.sale_item_mazdoori_tasks.filter(task => task.sale_item_id === i.id).map(task => fromRow<NonNullable<SaleItem['mazdooriTasks']>[number]>(task)) })) })).reverse()
+  const sales = t.sales.map(r => ({ ...fromRow<Sale>(r), items: t.sale_items.filter(i => i.sale_id === r.id).map(i => ({ ...fromRow<SaleItem>(i), unit: (i.unit as 'kg' | 'qty') || 'kg', mazdooriTasks: t.sale_item_mazdoori_tasks.filter(task => task.sale_item_id === i.id).map(task => fromRow<NonNullable<SaleItem['mazdooriTasks']>[number]>(task)) })) })).reverse()
   return limit < 0 ? sales : sales.slice(0, limit)
 }
 export interface Receipt { id: string; amount: number; paymentDate: string; customerId?: string; saleId?: string; paymentMethod: string }

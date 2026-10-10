@@ -446,8 +446,8 @@ export function NewBillPage() {
                   <th className="py-2.5 px-3">
                     Product / Description <span className="text-red-500 font-bold">*</span> <span className="font-normal text-slate-500 text-[11px]">(Choose or type)</span>
                   </th>
-                  <th className="py-2.5 px-2 w-20 text-center">
-                    Qty/Kg <span className="text-red-500 font-bold">*</span>
+                  <th className="py-2.5 px-2 w-32 text-center">
+                    Qty / Unit <span className="text-red-500 font-bold">*</span>
                   </th>
                   <th className="py-2.5 px-2 w-24 text-center">
                     Rate <span className="text-red-500 font-bold">*</span>
@@ -494,26 +494,39 @@ export function NewBillPage() {
                         />
                       </td>
 
-                      {/* Quantity */}
+                      {/* Quantity & Unit Selection */}
                       <td className="py-2.5 px-2 text-center">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="any"
-                          value={item.quantity || ''}
-                          placeholder="0"
-                          data-bill-cell={`${index}-1`}
-                          onKeyDown={(e) => handleCellKeyDown(e, index, 1)}
-                          onChange={(e) =>
-                            updateItem(item.id, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })
-                          }
-                          className={cn(
-                            'w-full h-9 text-center tabular-nums text-sm rounded-md bg-white focus:outline-none transition-colors',
-                            isQtyInvalid
-                              ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
-                              : 'border border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
-                          )}
-                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            value={item.quantity || ''}
+                            placeholder="0"
+                            data-bill-cell={`${index}-1`}
+                            onKeyDown={(e) => handleCellKeyDown(e, index, 1)}
+                            onChange={(e) =>
+                              updateItem(item.id, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })
+                            }
+                            className={cn(
+                              'flex-1 min-w-[50px] h-9 text-center tabular-nums text-sm rounded-md bg-white focus:outline-none transition-colors',
+                              isQtyInvalid
+                                ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
+                                : 'border border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                            )}
+                          />
+                          <select
+                            value={item.unit || 'kg'}
+                            onChange={(e) =>
+                              updateItem(item.id, { unit: e.target.value as 'kg' | 'qty' })
+                            }
+                            className="h-9 px-1 text-xs font-semibold rounded-md border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 focus:border-blue-500 focus:outline-none cursor-pointer shrink-0"
+                            title="Unit: 'kg' counts towards total weight; 'QTY' is excluded from weight"
+                          >
+                            <option value="kg">kg</option>
+                            <option value="qty">QTY</option>
+                          </select>
+                        </div>
                       </td>
 
                       {/* Rate */}

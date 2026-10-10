@@ -496,9 +496,9 @@ export function UpdateBillPage() {
                         <td className="py-3 px-4 text-xs text-slate-600 whitespace-nowrap max-w-[240px]">
                           <p
                             className="truncate font-medium text-slate-800"
-                            title={sale.items.map((i) => `${i.itemName} (${i.quantity})`).join(', ')}
+                            title={sale.items.map((i) => `${i.itemName} (${i.quantity}${i.unit === 'qty' ? ' Qty' : ' kg'})`).join(', ')}
                           >
-                            {sale.items.map((i) => `${i.itemName} (${i.quantity})`).join(', ') || '—'}
+                            {sale.items.map((i) => `${i.itemName} (${i.quantity}${i.unit === 'qty' ? ' Qty' : ' kg'})`).join(', ') || '—'}
                           </p>
                           <p className="text-[11px] text-slate-400 whitespace-nowrap">
                             {sale.items.length} item{sale.items.length === 1 ? '' : 's'}

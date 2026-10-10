@@ -33,7 +33,7 @@ export function prepareBill(items: SaleItem[], discount: number, paidAmount: num
       throw new Error(`Row #${rowNum}: Total mazdoori must match the amounts added for workers.`)
     }
     const rate = roundMoney(item.rate), mazdoori = roundMoney(item.mazdoori)
-    return { ...item, rate, mazdoori, itemName: item.itemName.trim(), mazdooriTasks: tasks, amount: calculateItemAmount(item.quantity, rate) }
+    return { ...item, unit: item.unit || 'kg', rate, mazdoori, itemName: item.itemName.trim(), mazdooriTasks: tasks, amount: calculateItemAmount(item.quantity, rate) }
   })
   const subtotal = roundMoney(normalized.reduce((sum, item) => sum + item.amount, 0))
   const totalMazdoori = roundMoney(normalized.reduce((sum, item) => sum + item.mazdoori, 0))

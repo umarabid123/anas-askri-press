@@ -842,3 +842,22 @@ test('mazdoori period totals cover all matching pages, count days once and exclu
   const custom = mazdooriPeriod('custom', '2026-10-08', '2026-10-08', '2026-10-08')
   assert.deepEqual(mazdooriSummary(rows.filter(row => isInMazdooriPeriod(row.createdAt, custom))), { total: 61.5, bills: 6, days: 1 })
 })
+
+test('mazdoori ledger only includes items with kg unit in weight, excluding qty items', () => {
+  const { mazdooriLedger } = source(path.join(root, 'src/features/mazdoori/period.ts'))
+  const saleWithMixedUnits = {
+    id: 'sale-units',
+    createdAt: '2026-10-10T12:00:00',
+    totalMazdoori: 100,
+    items: [
+      line({ quantity: 5, unit: 'kg' }),
+      line({ quantity: 10, unit: 'qty' }),
+      line({ quantity: 3 }),
+    ],
+  }
+  const rows = mazdooriLedger([saleWithMixedUnits])
+  assert.equal(rows[0].weight, 8)
+  assert.equal(rows[0].totalWeight, 8)
+  assert.equal(rows[0].mazdoori, 100)
+})
+

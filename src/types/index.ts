@@ -48,6 +48,7 @@ export interface SaleItem {
   itemId?: string
   itemName: string
   quantity: number
+  unit?: 'kg' | 'qty'
   rate: number
   mazdoori: number
   mazdooriTasks?: ItemMazdooriTask[]
