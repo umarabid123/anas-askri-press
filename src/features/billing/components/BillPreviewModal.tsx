@@ -231,21 +231,14 @@ export function BillPreviewModal({
         console.warn('Clipboard write warning:', clipErr)
       }
 
-      const shop = settings?.businessName || 'Anas Arki Press & Laser Cutting'
-      const invoiceLabel = data.invoiceNumber ? ` #${data.invoiceNumber}` : ''
-      const totalLabel = data.total !== undefined ? ` (Total: Rs ${data.total.toLocaleString()})` : ''
-      const textMsg = `Assalam-o-Alaikum! Here is your bill${invoiceLabel} from ${shop}${totalLabel}.`
-
-      const waUrl = formattedPhone
-        ? `https://wa.me/${formattedPhone}?text=${encodeURIComponent(textMsg)}`
-        : `https://wa.me/?text=${encodeURIComponent(textMsg)}`
+      const waUrl = formattedPhone ? `https://wa.me/${formattedPhone}` : 'https://wa.me/'
 
       await openWhatsApp(waUrl)
-      setShareNotice('Invoice image copied. In the WhatsApp chat press Ctrl+V, then Send.')
-      toast.info('Bill image copied. Paste it into WhatsApp with Ctrl+V.')
+      setShareNotice('Receipt image copied. In the WhatsApp chat press Ctrl+V, then click Send.')
+      toast.info('Receipt image copied! In WhatsApp press Ctrl+V.')
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
-      setExportError('Could not share the invoice image: ' + (err instanceof Error ? err.message : String(err)) + '. Use Save PNG Image and attach it in WhatsApp.')
+      setExportError('Could not share the invoice image: ' + (err instanceof Error ? err.message : String(err)) + '. Use Save Image and attach it in WhatsApp.')
     } finally { setIsGeneratingPng(false) }
   }
 
