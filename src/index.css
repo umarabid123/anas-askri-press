@@ -162,8 +162,8 @@
 .invoice-letterhead {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1.75fr) minmax(0, .85fr) minmax(0, 1.35fr);
-  gap: 15px;
+  grid-template-columns: auto auto 1fr;
+  gap: 24px;
   align-items: center;
   padding: 0 0 18px;
   border-bottom: 2px solid var(--invoice-gold);
@@ -177,8 +177,8 @@
 }
 
 .invoice-main-logo {
-  max-width: 250px;
-  max-height: 105px;
+  max-width: 230px;
+  max-height: 95px;
   width: auto;
   height: auto;
   object-fit: contain;
@@ -187,10 +187,11 @@
 
 .invoice-services {
   border-left: 2px solid var(--invoice-gold);
-  padding-left: 13px;
+  padding-left: 14px;
   display: grid;
-  gap: 11px;
+  gap: 10px;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .invoice-services>div {
@@ -490,8 +491,8 @@
 
 .invoice-bottom {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 16px;
   align-items: start;
   margin-top: 12px;
 }
@@ -617,14 +618,16 @@
   border: 1.5px solid var(--invoice-navy);
   border-radius: 6px;
   overflow: hidden;
+  background: white;
 }
 
 .invoice-total-row,
 .invoice-grand-total {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: stretch;
-  font-size: 15px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  align-items: center;
+  font-size: 14px;
+  background: white;
 }
 
 .invoice-total-row+.invoice-total-row {
@@ -633,88 +636,89 @@
 
 .invoice-total-row>*,
 .invoice-grand-total>* {
-  padding: 9px 11px;
+  padding: 8px 12px;
 }
 
 .invoice-total-row>strong,
 .invoice-grand-total>strong {
   border-left: 1px solid #8da1b9;
   text-align: right;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  white-space: nowrap;
+  font-size: 16px;
+  color: var(--invoice-navy);
 }
 
-.invoice-total-row>span {
+.invoice-total-label {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
   font-weight: 700;
+  font-size: 13.5px;
+  color: var(--invoice-navy);
+}
+
+.invoice-ur-text {
+  font-family: 'Noto Nastaliq Urdu', 'Urdu Typesetting', Tahoma, 'Segoe UI', Arial, sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  direction: rtl;
+  unicode-bidi: isolate;
+  color: #334155;
+  white-space: nowrap;
 }
 
 .invoice-previous {
-  font-size: 12px;
+  background: white;
 }
 
 .invoice-grand-total {
-  border-top: 3px solid var(--invoice-gold);
+  border-top: 2px solid var(--invoice-gold);
+  border-bottom: 2px solid var(--invoice-gold);
   background: var(--invoice-navy);
   color: white;
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 800;
+}
+
+.invoice-grand-total .invoice-total-label {
+  color: white;
+  font-size: 15px;
+}
+
+.invoice-grand-total .invoice-ur-text {
+  color: #fbd26a;
+  font-size: 14.5px;
+}
+
+.invoice-grand-total>strong {
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  color: white;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.invoice-paid-row,
+.invoice-balance-row,
+.invoice-advance-row {
+  background: white;
+}
+
+.invoice-val-paid {
+  color: #15803d !important;
+  font-weight: 800;
+}
+
+.invoice-val-balance {
+  color: #dc2626 !important;
+  font-weight: 900;
 }
 
 .invoice-totals small {
-  font-size: .8em;
-}
-
-.invoice-payment {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  font-size: 13.5px;
-  background: #f8fafc;
-  border-top: 1.5px solid #8da1b9;
-}
-
-.invoice-payment-col {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.invoice-payment-label {
+  font-size: .82em;
   font-weight: 700;
-  color: #1e293b;
-  font-size: 13.5px;
-}
-
-.invoice-payment-val {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 0.2px;
-}
-
-.invoice-paid-box .invoice-payment-val {
-  color: #047857;
-  background: #ecfdf5;
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid #a7f3d0;
-}
-
-.invoice-balance-box .invoice-payment-val {
-  color: #dc2626;
-  background: #fef2f2;
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid #fecaca;
-}
-
-.invoice-advance-box .invoice-payment-val {
-  color: #047857;
-  background: #ecfdf5;
-  padding: 3px 10px;
-  border-radius: 5px;
-  border: 1px solid #a7f3d0;
+  margin-right: 4px;
 }
 
 .invoice-thanks {

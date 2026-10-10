@@ -402,6 +402,84 @@ pub fn create_customer(customer: CustomerDto, state: State<DbState>) -> Result<C
 }
 
 #[tauri::command]
+pub fn set_customer_opening_balance(customer_id: String, amount: f64, state: State<DbState>) -> Result<CustomerDto, String> {
+    if customer_id.trim().is_empty() || !amount.is_finite() || amount < 0.0 {
+        return Err("Invalid opening balance or customer ID".into());
+    }
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let mut customer: CustomerDto = tx.query_row(
+        "SELECT id, name, mobile, address, total_purchase, total_paid, balance, created_at, updated_at, sync_status
+         FROM customers WHERE id = ?1",
+        params![customer_id],
+        |r| Ok(CustomerDto {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            mobile: r.get(2)?,
+            address: r.get(3)?,
+            total_purchase: r.get(4)?,
+            total_paid: r.get(5)?,
+            balance: r.get(6)?,
+            created_at: r.get(7)?,
+            updated_at: r.get(8)?,
+            sync_status: r.get(9)?,
+        }),
+    ).map_err(|_| "Customer not found".to_string())?;
+
+    let existing_entry: Option<(String, f64)> = tx.query_row(
+        "SELECT id, debit FROM customer_ledger 
+         WHERE customer_id = ?1 AND description LIKE '%Opening Balance%'
+         LIMIT 1",
+        params![customer_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).optional().map_err(|e| e.to_string())?;
+
+    let diff = match existing_entry {
+        Some((entry_id, old_debit)) => {
+            let diff = amount - old_debit;
+            tx.execute(
+                "UPDATE customer_ledger SET debit = ?1, balance = balance + ?2 WHERE id = ?3",
+                params![amount, diff, entry_id],
+            ).map_err(|e| e.to_string())?;
+
+            tx.execute(
+                "UPDATE customer_ledger SET balance = balance + ?1 WHERE customer_id = ?2 AND id != ?3",
+                params![diff, customer_id, entry_id],
+            ).map_err(|e| e.to_string())?;
+            diff
+        }
+        None => {
+            if amount > 0.0 {
+                let entry_id = Uuid::new_v4().to_string();
+                tx.execute(
+                    "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
+                     VALUES (?1, ?2, '2000-01-01T00:00:00Z', 'Opening Balance (Previous Udhar)', ?3, 0.0, ?3, NULL, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
+                    params![entry_id, customer_id, amount],
+                ).map_err(|e| e.to_string())?;
+
+                tx.execute(
+                    "UPDATE customer_ledger SET balance = balance + ?1 WHERE customer_id = ?2 AND id != ?3",
+                    params![amount, customer_id, entry_id],
+                ).map_err(|e| e.to_string())?;
+            }
+            amount
+        }
+    };
+
+    customer.total_purchase = ((customer.total_purchase + diff) * 100.0).round() / 100.0;
+    customer.balance = ((customer.balance + diff) * 100.0).round() / 100.0;
+
+    tx.execute(
+        "UPDATE customers SET total_purchase = ?1, balance = ?2, updated_at = datetime('now'), sync_status = 'pending' WHERE id = ?3",
+        params![customer.total_purchase, customer.balance, customer_id],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(customer)
+}
+
+#[tauri::command]
 pub fn create_sale(sale: CreateSaleDto, state: State<DbState>) -> Result<String, String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;

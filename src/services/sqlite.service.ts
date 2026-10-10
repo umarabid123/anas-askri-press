@@ -124,6 +124,42 @@ export async function updateCustomer(customer: Customer): Promise<Customer> {
   if (isTauri()) return invoke('update_customer', { customer: { ...customer, ...data } })
   return transaction(t => { const row = found(t, 'customers', customer.id); Object.assign(row, toRow(data)); touch(row); return fromRow<Customer>(row) })
 }
+export async function setCustomerOpeningBalance(customerId: string, amount: number): Promise<Customer> {
+  const rounded = roundMoney(amount)
+  if (isTauri()) return invoke('set_customer_opening_balance', { customerId, amount: rounded })
+  return transaction(t => {
+    const customer = found(t, 'customers', customerId)
+    const existingEntry = t.customer_ledger.find(r => r.customer_id === customerId && /opening balance/i.test(String(r.description)))
+    if (existingEntry) {
+      const oldAmount = Number(existingEntry.debit) || 0
+      const diff = roundMoney(rounded - oldAmount)
+      existingEntry.debit = rounded
+      customer.total_purchase = roundMoney(Number(customer.total_purchase) + diff)
+      customer.balance = roundMoney(Number(customer.balance) + diff)
+      touch(customer)
+      for (const entry of t.customer_ledger.filter(r => r.customer_id === customerId && r.id !== existingEntry.id)) {
+        entry.balance = roundMoney(Number(entry.balance) + diff)
+      }
+    } else {
+      customer.total_purchase = roundMoney(Number(customer.total_purchase) + rounded)
+      customer.balance = roundMoney(Number(customer.balance) + rounded)
+      touch(customer)
+      t.customer_ledger.unshift(toRow(stamp({
+        id: crypto.randomUUID(),
+        customerId: customer.id,
+        date: '2000-01-01T00:00:00Z',
+        description: 'Opening Balance (Previous Udhar)',
+        debit: rounded,
+        credit: 0,
+        balance: rounded,
+      })))
+      for (const entry of t.customer_ledger.filter(r => r.customer_id === customerId && r.date !== '2000-01-01T00:00:00Z')) {
+        entry.balance = roundMoney(Number(entry.balance) + rounded)
+      }
+    }
+    return fromRow<Customer>(customer)
+  })
+}
 export async function deleteCustomer(id: string): Promise<boolean> {
   if (isTauri()) return invoke('delete_customer', { customerId: id })
   return transaction(t => { found(t, 'customers', id); if (t.sales.some(r => r.customer_id === id) || t.payments.some(r => r.customer_id === id) || t.customer_ledger.some(r => r.customer_id === id)) throw new Error('Customers with financial history cannot be deleted.'); t.customers = t.customers.filter(r => r.id !== id); return true })

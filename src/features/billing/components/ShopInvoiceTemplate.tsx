@@ -221,18 +221,47 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
               </div>
             </section>
             <section className="invoice-totals" aria-label="Bill totals">
-              <div className="invoice-total-row"><span>Sub Total</span><strong>{money(data.total)} <small>Rs.</small></strong></div>
-              {account.previousBalance !== 0 && <div className="invoice-total-row invoice-previous"><span>{account.previousBalance > 0 ? 'Previous Dues (Purana Udhaar)' : 'Previous Advance'}</span><strong>{money(account.previousBalance)} <small>Rs.</small></strong></div>}
-              <div className="invoice-grand-total"><span>Total Amount</span><strong>{money(account.total)} <small>Rs.</small></strong></div>
-              <div className="invoice-payment">
-                <div className="invoice-payment-col invoice-paid-box">
-                  <span className="invoice-payment-label">Paid:</span>
-                  <b className="invoice-payment-val">{money(data.paidAmount)} Rs.</b>
+              <div className="invoice-total-row">
+                <span className="invoice-total-label">
+                  Sub Total <span className="invoice-ur-text" dir="rtl">(موجودہ بل)</span>
+                </span>
+                <strong><small>Rs.</small> {money(data.total)}</strong>
+              </div>
+              {account.previousBalance !== 0 && (
+                <div className="invoice-total-row invoice-previous">
+                  <span className="invoice-total-label">
+                    {account.previousBalance > 0 ? (
+                      <>Previous Dues <span className="invoice-ur-text" dir="rtl">(سابقہ بقایا)</span></>
+                    ) : (
+                      <>Previous Advance <span className="invoice-ur-text" dir="rtl">(سابقہ پیشگی)</span></>
+                    )}
+                  </span>
+                  <strong><small>Rs.</small> {money(account.previousBalance)}</strong>
                 </div>
-                <div className={`invoice-payment-col ${account.advance > 0 ? 'invoice-advance-box' : 'invoice-balance-box'}`}>
-                  <span className="invoice-payment-label">{account.advance > 0 ? 'Advance Remaining:' : 'Remaining Balance:'}</span>
-                  <b className="invoice-payment-val">{money(account.advance || account.balance)} Rs.</b>
-                </div>
+              )}
+              <div className="invoice-grand-total">
+                <span className="invoice-total-label">
+                  Total Amount <span className="invoice-ur-text" dir="rtl">(کل رقم)</span>
+                </span>
+                <strong><small>Rs.</small> {money(account.total)}</strong>
+              </div>
+              <div className="invoice-total-row invoice-paid-row">
+                <span className="invoice-total-label">
+                  Paid Amount <span className="invoice-ur-text" dir="rtl">(ادا شدہ رقم)</span>
+                </span>
+                <strong className="invoice-val-paid"><small>Rs.</small> {money(data.paidAmount)}</strong>
+              </div>
+              <div className={`invoice-total-row ${account.advance > 0 ? 'invoice-advance-row' : 'invoice-balance-row'}`}>
+                <span className="invoice-total-label">
+                  {account.advance > 0 ? (
+                    <>Advance Remaining <span className="invoice-ur-text" dir="rtl">(پیشگی رقم)</span></>
+                  ) : (
+                    <>Remaining Balance <span className="invoice-ur-text" dir="rtl">(بقایا رقم)</span></>
+                  )}
+                </span>
+                <strong className={account.advance > 0 ? 'invoice-val-paid' : 'invoice-val-balance'}>
+                  <small>Rs.</small> {money(account.advance || account.balance)}
+                </strong>
               </div>
             </section>
           </div>

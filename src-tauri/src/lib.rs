@@ -33,6 +33,7 @@ pub fn run() {
             create_customer,
             update_customer,
             delete_customer,
+            set_customer_opening_balance,
             get_customer_ledger,
             receive_payment,
             create_sale,

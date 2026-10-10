@@ -1,4 +1,4 @@
-import { getBusinessSettings, getCustomerLedger } from '@/services/sqlite.service'
+import { getBusinessSettings, getCustomerLedger, setCustomerOpeningBalance } from '@/services/sqlite.service'
 import { printDocument } from '@/utils/printing'
 import { useState, useRef, useEffect } from 'react'
 import {
@@ -60,15 +60,17 @@ export function NewBillPage() {
     resetCart,
     getGoodsSubtotal,
     getTotal,
-    getCredit,
   } = useCartStore()
 
-  const { customers, addCustomer } = useCustomers()
+  const { customers, addCustomer, refresh: refreshCustomers } = useCustomers()
 
   // Customer dropdown search state
   const [customerSearch, setCustomerSearch] = useState('')
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Opening balance input state (optional previous udhar / baqiya raqam)
+  const [openingBalanceInput, setOpeningBalanceInput] = useState('')
 
   // Modals
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false)
@@ -93,6 +95,7 @@ export function NewBillPage() {
     setCustomerSearch(''); setIsCustomerDropdownOpen(false)
     setActiveMazdooriItemId(null); setIsAddCustomerOpen(false)
     setIsPreviewOpen(false); setPreviewInvoiceData(null)
+    setOpeningBalanceInput('')
   }), [])
 
   useEffect(() => {
@@ -130,8 +133,19 @@ export function NewBillPage() {
   const activeItem = items.find((it) => it.id === activeMazdooriItemId)
   const goodsSubtotal = getGoodsSubtotal()
   const total = getTotal()
-  const credit = getCredit()
   const totalItemsCount = items.length
+
+  const effectiveOpeningBalance = (() => {
+    if (!customer) return 0
+    if (openingBalanceInput.trim() !== '') {
+      const val = parseFloat(openingBalanceInput)
+      return isNaN(val) ? (customer.balance || 0) : Math.max(0, val)
+    }
+    return customer.balance || 0
+  })()
+
+  const grandTotal = Math.max(0, total + effectiveOpeningBalance)
+  const netRemainingBalance = Math.max(0, grandTotal - paidAmount)
 
   // Filter customers for dropdown
   const filteredCustomers = customers.filter(
@@ -144,11 +158,13 @@ export function NewBillPage() {
     setCustomer(selected)
     setCustomerSearch('')
     setIsCustomerDropdownOpen(false)
+    setOpeningBalanceInput('')
   }
 
   const handleClearCustomer = () => {
     setCustomer(null)
     setCustomerSearch('')
+    setOpeningBalanceInput('')
   }
 
   // Handle adding custom mazdoori task
@@ -212,26 +228,47 @@ export function NewBillPage() {
         const reason = editBlockReason(editingSale.id, await getSales())
         if (reason) { setEditCheck({ id: editingSale.id, reason }); return null }
       }
+
+      // If customer is selected and opening balance was explicitly entered or adjusted
+      let currentCustomer = customer
+      if (currentCustomer?.id && openingBalanceInput.trim() !== '') {
+        const parsedOpening = Math.max(0, parseFloat(openingBalanceInput) || 0)
+        try {
+          const updatedCust = await setCustomerOpeningBalance(currentCustomer.id, parsedOpening)
+          currentCustomer = updatedCust
+          setCustomer(updatedCust)
+          refreshCustomers()
+        } catch (err) {
+          const msg = 'Could not save opening balance: ' + String(err)
+          setErrorMessage(msg)
+          toast.error(msg)
+          setIsSaving(false)
+          useCartStore.getState().setSavingBill(false)
+          saveLock.current = false
+          return null
+        }
+      }
+
       const bill = prepareBill(items, 0, paidAmount)
       const validItems = bill.items
       const input = {
         ...bill,
-        customerId: customer?.id || null,
-        customerName: customer?.name || null,
-        customerMobile: customer?.mobile || null,
+        customerId: currentCustomer?.id || null,
+        customerName: currentCustomer?.name || null,
+        customerMobile: currentCustomer?.mobile || null,
         paymentMethod,
         notes: undefined,
       }
       const invoiceNumber = editingSale ? await updateSale(editingSale.id, input) : await createSale(input)
 
       const invoiceData: ShopInvoiceData = {
-        customerId: customer?.id || null,
+        customerId: currentCustomer?.id || null,
         invoiceNumber,
         date: new Date().toISOString(),
-        customer: customer || null,
-        customerName: customer?.name || '',
-        customerPhone: customer?.mobile || '',
-        customerAddress: customer?.address || '',
+        customer: currentCustomer || null,
+        customerName: currentCustomer?.name || '',
+        customerPhone: currentCustomer?.mobile || '',
+        customerAddress: currentCustomer?.address || '',
         items: validItems,
         subtotal: bill.subtotal,
         totalMazdoori: bill.totalMazdoori,
@@ -243,18 +280,19 @@ export function NewBillPage() {
       }
 
       const saved = (await getSales().catch(() => [])).find(sale => sale.invoiceNumber === invoiceNumber)
-      const preview = saved ? saleToInvoiceData(saved, customer) : invoiceData
-      if (customer?.id) {
-        try { preview.previousBalance = previousInvoiceBalance(preview, await getCustomerLedger(customer.id)) }
-        catch (err) { toast.error('Bill saved, but previous dues could not be loaded: ' + String(err)) }
+      const preview = saved ? saleToInvoiceData(saved, currentCustomer) : invoiceData
+      if (currentCustomer?.id) {
+        try { preview.previousBalance = previousInvoiceBalance(preview, await getCustomerLedger(currentCustomer.id)) }
+        catch (err) { preview.previousBalance = effectiveOpeningBalance }
       }
       resetCart()
+      setOpeningBalanceInput('')
       setAutoWhatsApp(andThen === 'whatsapp')
       setPreviewInvoiceData(preview)
       setIsPreviewOpen(true)
       toast.success(`Bill #${invoiceNumber} ${editingSale ? 'updated' : 'saved'}.`)
 
-      if (andThen === 'print' && (!customer?.id || preview.previousBalance !== undefined)) {
+      if (andThen === 'print' && (!currentCustomer?.id || preview.previousBalance !== undefined)) {
         setTimeout(() => { getBusinessSettings().then(settings => printDocument('shop-invoice-canvas', settings.receiptPaperSize)).catch(err => setErrorMessage(String(err))) }, 300)
       }
 
@@ -629,27 +667,66 @@ export function NewBillPage() {
             </div>
 
             <div className="flex flex-wrap justify-between items-center gap-3 text-slate-700">
-              <span>Goods Subtotal</span>
+              <span>Goods Subtotal (موجودہ بل)</span>
               <span className="font-semibold text-slate-900 text-[15px]">
                 Rs {goodsSubtotal.toLocaleString()}
               </span>
             </div>
 
-            <div className="flex justify-between items-center gap-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-900">
-              <span className="font-bold">Total Amount</span>
-              <span className="font-bold text-slate-900 text-[18px]">
-                Rs {total.toLocaleString()}
-              </span>
-            </div>
-
-            {customer && customer.balance > 0 && (
-              <div className="flex flex-wrap justify-between items-center gap-3 text-red-700 bg-red-50 p-2.5 rounded-lg border border-red-200">
-                <span className="text-xs font-semibold">Previous Udhar (Purana Baqaya)</span>
-                <span className="font-bold text-sm">
-                  Rs {customer.balance.toLocaleString()}
+            {/* Opening Balance / Purana Baqaya (Optional) */}
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-amber-950">
+                  Opening Balance (سابقہ بقایا / پرانا ادھار)
+                </span>
+                <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                  Optional
                 </span>
               </div>
-            )}
+              {customer ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">Rs</span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={openingBalanceInput}
+                      placeholder={customer.balance > 0 ? String(customer.balance) : "0"}
+                      onChange={(e) => setOpeningBalanceInput(e.target.value)}
+                      className="w-full h-9 px-3 text-right font-bold text-slate-900 border border-amber-300 rounded-md bg-white focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-200 text-sm"
+                    />
+                  </div>
+                  {customer.balance > 0 && openingBalanceInput === '' ? (
+                    <p className="text-[11px] text-amber-800 leading-tight">
+                      Current Udhar: <b>Rs {customer.balance.toLocaleString()}</b> (enter new amount to change)
+                    </p>
+                  ) : openingBalanceInput !== '' ? (
+                    <p className="text-[11px] text-emerald-700 font-semibold leading-tight">
+                      Opening balance will be set to: <b>Rs {Number(openingBalanceInput || 0).toLocaleString()}</b>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 leading-tight">
+                      Add previous dues/udhar if not added yet
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-[11px] text-slate-500 italic">
+                  Select a customer above to add or view Opening Balance
+                </p>
+              )}
+            </div>
+
+            {/* Total Amount (Includes Goods + Opening/Previous Balance) */}
+            <div className="flex justify-between items-center gap-3 rounded-lg border border-teal-200 bg-teal-50 p-3 text-teal-900 shadow-2xs">
+              <div className="flex flex-col">
+                <span className="font-bold text-[15px]">Total Amount</span>
+                <span className="text-[11px] font-semibold text-teal-700">Kul Raqam (کل رقم)</span>
+              </div>
+              <span className="font-extrabold text-slate-900 text-[19px]">
+                Rs {grandTotal.toLocaleString()}
+              </span>
+            </div>
 
             <div className="flex flex-wrap justify-between items-center gap-3 text-slate-700">
               <div className="flex flex-wrap items-center gap-2">
@@ -658,6 +735,7 @@ export function NewBillPage() {
                   type="button"
                   onClick={() => setPaidAmount(total)}
                   className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs text-blue-800 hover:bg-blue-100 font-semibold cursor-pointer"
+                  title="Pay current goods bill in full"
                 >
                   Paid in Full
                 </button>
@@ -675,9 +753,12 @@ export function NewBillPage() {
             </div>
 
             <div className="flex flex-wrap justify-between items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <span className="font-semibold text-amber-900 text-sm">Amount Unpaid (Udhaar)</span>
+              <div className="flex flex-col">
+                <span className="font-semibold text-amber-900 text-sm">Amount Unpaid (Net Baqaya)</span>
+                <span className="text-[11px] text-amber-700 font-semibold">Remaining Balance (بقایا رقم)</span>
+              </div>
               <span className="font-bold text-amber-900 text-lg">
-                Rs {credit.toLocaleString()}
+                Rs {netRemainingBalance.toLocaleString()}
               </span>
             </div>
           </div>
