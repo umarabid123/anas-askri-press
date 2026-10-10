@@ -8,9 +8,12 @@ class ConnectivityService {
   private listeners: Set<ConnectivityCallback> = new Set()
   private checkInterval: ReturnType<typeof setInterval> | null = null
 
-  public start() { if (!this.checkInterval) this.initListeners() }
+  public start() {
+    if (!this.checkInterval) this.initListeners()
+    void this.verifyConnection()
+  }
 
-  private onlineHandler = () => this.handleNetworkChange(true)
+  private onlineHandler = () => void this.verifyConnection()
   private offlineHandler = () => this.handleNetworkChange(false)
   private initListeners() {
     if (typeof window === 'undefined') return
@@ -20,17 +23,12 @@ class ConnectivityService {
 
     // Periodic heartbeat check (every 30s)
     this.checkInterval = setInterval(() => {
-      this.verifyConnection()
+      void this.verifyConnection()
     }, 30000)
   }
 
   public async verifyConnection(): Promise<boolean> {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      this.handleNetworkChange(false)
-      return false
-    }
-
-    // If Supabase is configured, test actual end-to-end reachability
+    // If Supabase is configured, test actual end-to-end reachability directly
     if (isSupabaseConfigured()) {
       const isReachable = await checkSupabaseConnection()
       this.handleNetworkChange(isReachable)
@@ -38,8 +36,9 @@ class ConnectivityService {
     }
 
     // If no Supabase configured, local network is considered online for local app
-    this.handleNetworkChange(true)
-    return true
+    const online = typeof navigator !== 'undefined' ? navigator.onLine : true
+    this.handleNetworkChange(online)
+    return online
   }
 
   private handleNetworkChange(online: boolean) {
