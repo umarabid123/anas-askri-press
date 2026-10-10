@@ -143,7 +143,7 @@ export function CustomerStatementModal({
 
           {/* Footer note */}
           <div className="pt-2 flex items-center justify-between text-[11px] text-slate-400 border-t border-slate-100">
-            <span>Generated from Anas Arki Press and Laser Cutting</span>
+            <span>Generated from Anas Arki Press</span>
             <span>Customer Signature: ___________________</span>
           </div>
         </div>

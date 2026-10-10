@@ -1,5 +1,5 @@
 import React from 'react'
-import { CalendarDays, CreditCard, FileText, Mail, MapPin, Phone, Printer, Settings2, Sparkles, UserRound, Wrench } from 'lucide-react'
+import { CalendarDays, CreditCard, FileText, Layers, Mail, MapPin, Palette, Phone, Scissors, UserRound } from 'lucide-react'
 import type { Customer, SaleItem, BusinessSettings } from '@/types'
 import { parseDate } from '@/utils/financial'
 import { invoiceAccountTotals } from '../invoice-data'
@@ -41,9 +41,9 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
     const filledItems = [...data.items]
     const emptyRowsCount = Math.max(0, minRows - filledItems.length)
 
-    const rawShopName = settings?.businessName || 'ANAS ARKI PRESS & LASER CUTTING'
+    const rawShopName = (settings?.businessName || 'ANAS ARKI PRESS').replace(/\s*&\s*LASER\s*CUTTING/i, '').trim()
     let primaryName = 'ANAS ARKI'
-    let secondaryName = 'PRESS & LASER CUTTING'
+    let secondaryName = 'PRESS'
     if (/\sPRESS\b/i.test(rawShopName)) {
       const splitAt = rawShopName.search(/\sPRESS\b/i)
       primaryName = rawShopName.slice(0, splitAt).trim()
@@ -67,8 +67,14 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
     }
 
     const tagline = settings?.subtitle ?? 'PRECISION | QUALITY | YOUR VISION OUR WORK'
-    const address = settings?.address ?? 'Dhuddi wala Lower Canal Near Askari Bank Main Jaranwala Road'
-    const phone = settings?.phone ?? '0300-7973059'
+    const targetAddress = 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.'
+    const address = settings?.address && !settings.address.toLowerCase().includes('dhuddi wala') && settings.address !== 'Dhuddi wala Lower Canal Near Askari Bank Main Jaranwala Road'
+      ? settings.address
+      : targetAddress
+
+    const targetPhone = '03007973059'
+    const phone = (settings?.phone && settings.phone !== '0300-7973059') ? settings.phone : targetPhone
+    const email = 'barkatarkipress@outlook.com'
     const footerText = settings?.footerText ?? 'Thank You For Your Business'
 
     // Formatted date (DD-MM-YYYY)
@@ -90,7 +96,13 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
 
     if (settings && settings.receiptPaperSize !== 'A4') return (
       <div id={id} ref={ref} className="bg-white p-3 text-black font-sans select-text" style={{ width: settings.receiptPaperSize, fontSize: settings.receiptPaperSize === '58mm' ? 10 : 12 }}>
-        <div className="text-center border-b border-black pb-2"><h1 className="font-bold text-sm">{rawShopName}</h1><p>{address}</p><p>{phone}</p></div>
+        <div className="text-center border-b border-black pb-2">
+          <h1 className="font-bold text-sm">{primaryName} {secondaryName}</h1>
+          <p className="font-semibold text-xs">Ali Asghar</p>
+          <p>{address}</p>
+          <p>{phone}</p>
+          <p>{email}</p>
+        </div>
         <p className="font-bold mt-2">Invoice {data.invoiceNumber}</p><p>{formattedDate} · {data.paymentMethod.toUpperCase()}</p>
         {data.cancelledAt && <p className="text-center font-bold border border-black my-1">*** {data.cancelReason?.startsWith('Updated:') ? 'OLD BILL' : 'CANCELLED'} ***</p>}
         <p>{customerName || 'Cash Customer'} {customerPhone}</p>
@@ -102,7 +114,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
           </div>)}
         </div>
         {([
-          ['Sub Total (This Bill)', data.total],
+          ['Sub Total', data.total],
           ...(account.previousBalance ? [[account.previousBalance > 0 ? 'Previous Dues' : 'Previous Advance', account.previousBalance] as [string, number]] : []),
           ['TOTAL', account.total],
           ['Paid', data.paidAmount],
@@ -115,10 +127,9 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
 
     const money = (amount: number) => amount.toLocaleString('en-PK', { maximumFractionDigits: 2 })
     const services = [
-      { Icon: Sparkles, label: 'Laser Cutting' },
-      { Icon: Settings2, label: 'CNC Cutting' },
-      { Icon: Wrench, label: 'Metal Fabrication' },
-      { Icon: Printer, label: 'Custom Design & Printing' },
+      { Icon: Layers, label: 'Banding' },
+      { Icon: Scissors, label: 'Cutting' },
+      { Icon: Palette, label: 'Custom Design' },
     ]
 
     return (
@@ -132,16 +143,13 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
           </svg>
           <header className="invoice-letterhead">
             <div className="invoice-brand">
-              {settings?.showLogo !== false && <svg className="invoice-logo" viewBox="0 0 180 160" aria-label="Anas Arki logo" role="img">
-                <path d="M53 136 105 16h23l49 92h-31l-30-57-31 65h49l-13 20Z" fill="#dca312" />
-                <path d="M6 126 53 27h26l54 99h-35L66 65l-29 61Z" fill="#082e60" />
-                <path d="m4 99 75-13 40 22H44Z" fill="#082e60" />
-                <path d="m99 87 12-8 11 8-11 7Z" fill="#dca312" />
-                <g fill="#dca312" transform="translate(145 129)">
-                  {Array.from({ length: 16 }, (_, i) => <path key={i} d="M0-36 3-8 0 0-3-8Z" transform={`rotate(${i * 22.5})`} />)}
-                  <circle r="5" />
-                </g>
-              </svg>}
+              {settings?.showLogo !== false && (
+                <img
+                  src={settings?.logoPath || "/logo.png"}
+                  alt="Anas Arki Press logo"
+                  className="invoice-logo object-contain"
+                />
+              )}
               <div className="invoice-brand-type">
                 <h1>{primaryName}</h1>
                 {secondaryName && <h2>{secondaryName}</h2>}
@@ -152,9 +160,10 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
               {services.map(({ Icon, label }) => <div key={label}><span><Icon aria-hidden="true" /></span><b>{label}</b></div>)}
             </div>
             <div className="invoice-contact">
-              {address && <div><MapPin aria-hidden="true" /><span>{address}</span></div>}
+              <div className="invoice-shop-owner"><UserRound aria-hidden="true" /><span>Ali Asghar</span></div>
               {phone && <div className="invoice-shop-phone"><Phone aria-hidden="true" /><span>{phone}</span></div>}
-              <div><Mail aria-hidden="true" /><span>barkatarkipress@outlook.com</span></div>
+              {address && <div className="invoice-shop-address"><MapPin aria-hidden="true" /><span>{address}</span></div>}
+              <div className="invoice-shop-email"><Mail aria-hidden="true" /><span>{email}</span></div>
             </div>
           </header>
           <div className="invoice-title"><span>INVOICE</span></div>
@@ -199,10 +208,18 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
             </section>
             <section className="invoice-totals" aria-label="Bill totals">
               <div className="invoice-total-row"><span>Sub Total</span><strong>{money(data.total)} <small>Rs.</small></strong></div>
-              <div className="invoice-total-row"><span>{data.discount > 0 ? 'Discount Included' : 'Discount'}</span><strong>{money(data.discount)} <small>Rs.</small></strong></div>
               {account.previousBalance !== 0 && <div className="invoice-total-row invoice-previous"><span>{account.previousBalance > 0 ? 'Previous Dues (Purana Udhaar)' : 'Previous Advance'}</span><strong>{money(account.previousBalance)} <small>Rs.</small></strong></div>}
               <div className="invoice-grand-total"><span>Total Amount</span><strong>{money(account.total)} <small>Rs.</small></strong></div>
-              <div className="invoice-payment"><span>Paid: <b>{money(data.paidAmount)} Rs.</b></span><span>{account.advance > 0 ? 'Advance Remaining: ' : 'Balance: '}<b>{money(account.advance || account.balance)} Rs.</b></span></div>
+              <div className="invoice-payment">
+                <div className="invoice-payment-col invoice-paid-box">
+                  <span className="invoice-payment-label">Paid:</span>
+                  <b className="invoice-payment-val">{money(data.paidAmount)} Rs.</b>
+                </div>
+                <div className={`invoice-payment-col ${account.advance > 0 ? 'invoice-advance-box' : 'invoice-balance-box'}`}>
+                  <span className="invoice-payment-label">{account.advance > 0 ? 'Advance Remaining:' : 'Remaining Balance:'}</span>
+                  <b className="invoice-payment-val">{money(account.advance || account.balance)} Rs.</b>
+                </div>
+              </div>
             </section>
           </div>
           <footer className="invoice-thanks"><span>{footerText}</span></footer>

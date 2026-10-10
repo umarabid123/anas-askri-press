@@ -1,8 +1,8 @@
 export const BUSINESS_INFO = {
-  name: 'Anas Arki Press & Laser Cutting',
-  subtitle: 'Chadar • Dabi • Chogat • Laser Cutting • CNC Cutting',
-  defaultPhone: '',
-  defaultAddress: '',
+  name: 'Anas Arki Press',
+  subtitle: 'Chadar • Dabi • Chogat • Banding • Cutting',
+  defaultPhone: '03007973059',
+  defaultAddress: 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.',
   currency: 'PKR',
   currencySymbol: 'Rs',
 } as const
@@ -27,6 +27,6 @@ export const DEFAULT_SERVICES = [
   'Chadar',
   'Dabi',
   'Chogat',
-  'Laser Cutting',
-  'CNC Cutting',
+  'Banding',
+  'Cutting',
 ] as const

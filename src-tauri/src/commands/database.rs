@@ -1346,7 +1346,7 @@ pub fn get_business_settings(state: State<DbState>) -> Result<BusinessSettingsDt
 
     let _ = conn.execute(
         "INSERT OR IGNORE INTO business_settings (id, business_name, subtitle, phone, address, invoice_prefix, next_invoice_number)
-         VALUES ('default', 'ANAS ARKI PRESS & LASER CUTTING', 'PRECISION | QUALITY | YOUR VISION OUR WORK', '0300-7973059', 'Dhuddi wala Lower Canal Near Askari Bandk Main Jaranwala Road', 'ARKI', 1001)",
+         VALUES ('default', 'ANAS ARKI PRESS', 'PRECISION | QUALITY | YOUR VISION OUR WORK', '03007973059', 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.', 'ARKI', 1001)",
         [],
     );
 

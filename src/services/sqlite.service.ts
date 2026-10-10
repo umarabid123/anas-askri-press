@@ -14,8 +14,8 @@ export interface CreateSaleInput {
   remainingCredit: number; paymentMethod: string; notes?: string
 }
 export const DEFAULT_SETTINGS: BusinessSettings = {
-  id: 'default', businessName: 'ANAS ARKI PRESS & LASER CUTTING', subtitle: 'PRECISION | QUALITY | YOUR VISION OUR WORK',
-  phone: '0300-7973059', address: 'Dhuddi wala Lower Canal Near Askari Bank Main Jaranwala Road',
+  id: 'default', businessName: 'ANAS ARKI PRESS', subtitle: 'PRECISION | QUALITY | YOUR VISION OUR WORK',
+  phone: '03007973059', address: 'Dhuddiwala, Lower Canal Road, Near Askari Bank, Jaranwala Road, Faisalabad, Pakistan.',
   invoicePrefix: 'ARKI', nextInvoiceNumber: 1001, receiptPaperSize: 'A4', footerText: 'Thank you for your business!',
   showLogo: true, currency: 'PKR', currencySymbol: 'Rs',
 }
@@ -458,7 +458,13 @@ export async function getSales(limit = -1): Promise<Sale[]> {
 export interface Receipt { id: string; amount: number; paymentDate: string; customerId?: string; saleId?: string; paymentMethod: string }
 export async function getPayments(): Promise<Receipt[]> { return (await exportDatabase()).tables.payments.map(fromRow<Receipt>) }
 export async function getBusinessSettings(): Promise<BusinessSettings> {
-  const settings = isTauri() ? await invoke<BusinessSettings>('get_business_settings') : fromRow<BusinessSettings>(readBrowser().business_settings[0]!)
+  const raw = isTauri() ? await invoke<BusinessSettings>('get_business_settings') : fromRow<BusinessSettings>(readBrowser().business_settings[0]!)
+  const settings: BusinessSettings = {
+    ...raw,
+    businessName: raw.businessName?.replace(/\s*&\s*LASER\s*CUTTING/i, '').trim() || DEFAULT_SETTINGS.businessName,
+    phone: (raw.phone && raw.phone !== '0300-7973059') ? raw.phone : DEFAULT_SETTINGS.phone,
+    address: (raw.address && !raw.address.toLowerCase().includes('dhuddi wala')) ? raw.address : DEFAULT_SETTINGS.address,
+  }
   useBusinessSettingsStore.getState().setSettings(settings)
   return settings
 }
