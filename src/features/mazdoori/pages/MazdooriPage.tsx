@@ -4,7 +4,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Plus,
 } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
 import { formatPKR, formatDate, localDateKey } from '@/utils/financial'
 import { getSales, getCustomers } from '@/services/sqlite.service'
 import { ROUTES } from '@/constants/routes'
@@ -17,6 +19,7 @@ import type { Customer, Sale } from '@/types'
 import { mazdooriPeriod, isInMazdooriPeriod, mazdooriSummary, mazdooriLedger, type MazdooriPreset } from '../period'
 import { WeeklyMazdooriRecords } from '../components/WeeklyMazdooriRecords'
 import { MazdooriLedgerTable } from '../components/MazdooriLedgerTable'
+import { AddMazdooriModal } from '../components/AddMazdooriModal'
 
 type DatePreset = MazdooriPreset
 
@@ -37,11 +40,12 @@ export function MazdooriPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [selectedInvoice, setSelectedInvoice] = useState<ShopInvoiceData | null>(null)
   const [view, setView] = useState<'records' | 'weeks'>('records')
+  const [isAddMazdooriOpen, setIsAddMazdooriOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([getSales(), getCustomers()])
       .then(([s, c]) => {
-        setSales(s.filter((sale) => (sale.totalMazdoori || 0) > 0))
+        setSales(s.filter((sale) => (sale.totalMazdoori || 0) !== 0))
         setCustomers(c)
       })
       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
@@ -98,9 +102,24 @@ export function MazdooriPage() {
   const controlClass = 'rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200'
   return <div className="flex flex-col gap-5 pb-4">
     <header className="flex flex-wrap items-center justify-between gap-4">
-      <div><h1 className="text-xl font-semibold text-slate-900">Mazdoori</h1><p className="mt-1 text-sm text-slate-500">Daily work and weekly records.</p></div>
-      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1" role="group" aria-label="Mazdoori views">
-        {([{ value: 'records', label: 'Mazdoori records' }, { value: 'weeks', label: 'Weekly records' }] as const).map(tab => <button key={tab.value} type="button" aria-pressed={view === tab.value} onClick={() => setView(tab.value)} className={cn('rounded-md px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-slate-500', view === tab.value ? 'bg-white text-blue-800 shadow-xs ring-1 ring-blue-200' : 'text-slate-500 hover:text-slate-800')}>{tab.label}</button>)}
+      <div>
+        <h1 className="text-xl font-semibold text-slate-900">Mazdoori</h1>
+        <p className="mt-1 text-sm text-slate-500">Daily work, payouts, and weekly records.</p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          onClick={() => setIsAddMazdooriOpen(true)}
+          className="bg-blue-700 hover:bg-blue-800 flex items-center gap-1.5 shadow-xs shrink-0"
+        >
+          <Plus className="w-4 h-4 stroke-[2.5]" />
+          <span>Add Mazdoori</span>
+        </Button>
+
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-1" role="group" aria-label="Mazdoori views">
+          {([{ value: 'records', label: 'Mazdoori records' }, { value: 'weeks', label: 'Weekly records' }] as const).map(tab => <button key={tab.value} type="button" aria-pressed={view === tab.value} onClick={() => setView(tab.value)} className={cn('rounded-md px-3 py-2 text-sm font-medium cursor-pointer focus-visible:outline-2 focus-visible:outline-slate-500', view === tab.value ? 'bg-white text-blue-800 shadow-xs ring-1 ring-blue-200' : 'text-slate-500 hover:text-slate-800')}>{tab.label}</button>)}
+        </div>
       </div>
     </header>
     {view === 'weeks' ? <WeeklyMazdooriRecords sales={sales} isLoading={isLoading} error={error} onViewBill={openBill} /> : <section className="rounded-xl border border-slate-200 bg-white">
@@ -133,5 +152,12 @@ export function MazdooriPage() {
       </div>}
     </section>}
     <BillPreviewModal isOpen={!!selectedInvoice} data={selectedInvoice} onClose={() => setSelectedInvoice(null)} onNewBill={() => navigate(ROUTES.NEW_BILL)} onCancelled={() => setReloadKey(k => k + 1)} />
+
+    {/* Add / Adjust Mazdoori Modal */}
+    <AddMazdooriModal
+      isOpen={isAddMazdooriOpen}
+      onClose={() => setIsAddMazdooriOpen(false)}
+      onSuccess={() => setReloadKey((k) => k + 1)}
+    />
   </div>
 }

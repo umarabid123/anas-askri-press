@@ -72,7 +72,7 @@ export function CustomersPage() {
     if (!deletingCustomer) return
     setDeleteError(null)
     try {
-      await removeCustomer(deletingCustomer.id)
+      await removeCustomer(deletingCustomer.id, true)
       setDeletingCustomer(null)
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : 'Could not delete customer.')
@@ -367,15 +367,20 @@ export function CustomersPage() {
 
       <ConfirmDialog
         isOpen={!!deletingCustomer}
-        onClose={() => setDeletingCustomer(null)}
+        onClose={() => {
+          setDeletingCustomer(null)
+          setDeleteError(null)
+        }}
         onConfirm={handleDeleteConfirm}
         title="Delete Customer"
         description={
           deleteError
             ? deleteError
-            : `Are you sure you want to delete "${deletingCustomer?.name}"? If this customer has existing sales or transactions, deletion will be blocked to maintain audit integrity.`
+            : deletingCustomer && (deletingCustomer.totalPurchase > 0 || deletingCustomer.balance > 0)
+              ? `Warning: "${deletingCustomer.name}" has existing bills or balance (${formatPKR(deletingCustomer.balance)}). Deleting will permanently remove this customer and all their associated bills and ledger history. Are you sure?`
+              : `Are you sure you want to delete "${deletingCustomer?.name}"? This action cannot be undone.`
         }
-        confirmText="Delete"
+        confirmText="Delete Customer"
         variant="danger"
       />
     </div>

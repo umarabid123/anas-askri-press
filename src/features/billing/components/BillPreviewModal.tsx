@@ -3,17 +3,18 @@ import { createPortal } from 'react-dom'
 import { saveFile, openWhatsApp } from '@/services/files.service'
 import { printDocument } from '@/utils/printing'
 import { toBlob } from 'html-to-image'
-import { Ban, Download, MessageCircle, Printer, X, Loader2, Pencil, Plus, DollarSign } from 'lucide-react'
+import { Ban, Download, MessageCircle, Printer, X, Loader2, Pencil, Plus, DollarSign, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { ROUTES } from '@/constants/routes'
 import { useCartStore } from '@/stores/cart.store'
 import { toast } from '@/stores/toast.store'
 import { confirmLeaveDraft, startNewBill } from '../bill-actions'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { ShopInvoiceTemplate, type ShopInvoiceData } from './ShopInvoiceTemplate'
 import { CancelInvoiceDialog } from './CancelInvoiceDialog'
 import { ReceivePaymentModal } from '@/features/customers/components/ReceivePaymentModal'
-import { getBusinessSettings, getSales, getCustomerById, getCustomerLedger, receivePayment } from '@/services/sqlite.service'
+import { getBusinessSettings, getSales, getCustomerById, getCustomerLedger, receivePayment, deleteSale } from '@/services/sqlite.service'
 import { previousInvoiceBalance } from '../invoice-data'
 import type { BusinessSettings, Customer } from '@/types'
 
@@ -46,6 +47,8 @@ export function BillPreviewModal({
   const [shareNotice, setShareNotice] = useState('')
   const [settings, setSettings] = useState<BusinessSettings | null>(null)
   const [isCancelOpen, setIsCancelOpen] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [isOpeningEdit, setIsOpeningEdit] = useState(false)
   const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false)
   const [receivePaymentCustomer, setReceivePaymentCustomer] = useState<Customer | null>(null)
@@ -136,6 +139,22 @@ export function BillPreviewModal({
       navigate(ROUTES.NEW_BILL)
     } catch (err) { setExportError(err instanceof Error ? err.message : String(err)) }
     finally { setIsOpeningEdit(false) }
+  }
+
+  const handleDeleteBillConfirm = async () => {
+    if (!data?.saleId) return
+    setIsDeleting(true)
+    try {
+      await deleteSale(data.saleId)
+      toast.success(`Bill #${data.invoiceNumber} deleted permanently.`)
+      setIsDeleteOpen(false)
+      onCancelled?.()
+      onClose()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not delete bill.')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   useEffect(() => {
@@ -374,10 +393,20 @@ export function BillPreviewModal({
               <Button
                 variant="outline"
                 onClick={() => setIsCancelOpen(true)}
-                className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50"
+                className="flex items-center gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50"
               >
                 <Ban className="w-4 h-4" />
                 <span>Cancel Bill</span>
+              </Button>
+            )}
+            {data.saleId && (
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteOpen(true)}
+                className="flex items-center gap-1.5 text-red-600 border-red-300 hover:bg-red-50 font-semibold"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete Bill</span>
               </Button>
             )}
             <Button variant="outline" onClick={onClose}>
@@ -435,6 +464,18 @@ export function BillPreviewModal({
           return receiptId
         }}
       />
+
+      {data.saleId && (
+        <ConfirmDialog
+          isOpen={isDeleteOpen}
+          onClose={() => setIsDeleteOpen(false)}
+          onConfirm={handleDeleteBillConfirm}
+          title="Delete Bill Permanently"
+          description={`Are you sure you want to permanently delete Bill #${data.invoiceNumber}? This will remove the bill, payments, and adjust the customer balance.`}
+          confirmText={isDeleting ? 'Deleting...' : 'Delete Bill'}
+          variant="danger"
+        />
+      )}
     </div>, document.body
   )
 }

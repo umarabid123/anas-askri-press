@@ -103,6 +103,26 @@ pub struct MazdooriEntryDto {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct DirectMazdooriDto {
+    #[serde(rename = "customerId")]
+    pub customer_id: Option<String>,
+    #[serde(rename = "customerName")]
+    pub customer_name: Option<String>,
+    #[serde(rename = "customerMobile")]
+    pub customer_mobile: Option<String>,
+    pub amount: f64,
+    #[serde(rename = "isDeduction", default)]
+    pub is_deduction: bool,
+    #[serde(rename = "itemName")]
+    pub item_name: Option<String>,
+    #[serde(rename = "workDetail")]
+    pub work_detail: Option<String>,
+    pub weight: Option<f64>,
+    pub date: Option<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SyncQueueItemDto {
     pub id: String,
     #[serde(rename = "entityType")]
@@ -842,7 +862,7 @@ pub fn update_customer(customer: CustomerDto, state: State<DbState>) -> Result<C
 }
 
 #[tauri::command]
-pub fn delete_customer(customer_id: String, state: State<DbState>) -> Result<bool, String> {
+pub fn delete_customer(customer_id: String, force: Option<bool>, state: State<DbState>) -> Result<bool, String> {
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -852,8 +872,31 @@ pub fn delete_customer(customer_id: String, state: State<DbState>) -> Result<boo
         |row| row.get(0),
     ).map_err(|e| e.to_string())?;
 
-    if count > 0 {
+    if count > 0 && !force.unwrap_or(false) {
         return Err("Cannot delete customer with existing sales. Records are kept for financial audit.".to_string());
+    }
+
+    if count > 0 {
+        // Cascade delete linked sales, payments, ledger entries
+        tx.execute(
+            "DELETE FROM sale_item_mazdoori_tasks WHERE sale_item_id IN (
+                SELECT id FROM sale_items WHERE sale_id IN (
+                    SELECT id FROM sales WHERE customer_id = ?1
+                )
+            )",
+            params![customer_id],
+        ).map_err(|e| e.to_string())?;
+
+        tx.execute(
+            "DELETE FROM sale_items WHERE sale_id IN (
+                SELECT id FROM sales WHERE customer_id = ?1
+            )",
+            params![customer_id],
+        ).map_err(|e| e.to_string())?;
+
+        tx.execute("DELETE FROM payments WHERE customer_id = ?1", params![customer_id]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM customer_ledger WHERE customer_id = ?1", params![customer_id]).map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM sales WHERE customer_id = ?1", params![customer_id]).map_err(|e| e.to_string())?;
     }
 
     tx.execute("DELETE FROM customers WHERE id = ?1", params![customer_id]).map_err(|e| e.to_string())?;
@@ -1373,6 +1416,137 @@ pub fn pay_mazdoor(mut payment: PayMazdoorDto, state: State<DbState>) -> Result<
 }
 
 #[tauri::command]
+pub fn create_direct_mazdoori_entry(
+    dto: DirectMazdooriDto,
+    state: State<DbState>,
+) -> Result<String, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let amount = (dto.amount * 100.0).round() / 100.0;
+    if !amount.is_finite() || amount <= 0.0 {
+        return Err("Please enter a valid mazdoori amount greater than 0".into());
+    }
+
+    let mazdoori_val = if dto.is_deduction { -amount } else { amount };
+    let sale_id = Uuid::new_v4().to_string();
+
+    let (prefix, mut sequence): (String, i64) = tx.query_row(
+        "SELECT invoice_prefix, next_invoice_number FROM business_settings WHERE id='default'",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).map_err(|e| e.to_string())?;
+
+    if sequence < 1 || prefix.trim().is_empty() {
+        return Err("Invalid invoice settings".into());
+    }
+
+    let mut number = format!("{}-{:04}", prefix, sequence);
+    loop {
+        let count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM sales WHERE invoice_number=?1",
+            params![number],
+            |r| r.get(0),
+        ).map_err(|e| e.to_string())?;
+        if count == 0 { break; }
+        sequence = sequence.checked_add(1).ok_or("Invoice sequence overflow")?;
+        number = format!("{}-{:04}", prefix, sequence);
+    }
+    tx.execute(
+        "UPDATE business_settings SET next_invoice_number=?1 WHERE id='default'",
+        params![sequence.checked_add(1).ok_or("Invoice sequence overflow")?],
+    ).map_err(|e| e.to_string())?;
+
+    let (cust_id, cust_name, cust_mobile) = if let Some(ref cid) = dto.customer_id {
+        if !cid.trim().is_empty() {
+            let res: Option<(String, String)> = tx.query_row(
+                "SELECT name, mobile FROM customers WHERE id = ?1",
+                params![cid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            ).optional().map_err(|e| e.to_string())?;
+            if let Some((n, m)) = res {
+                (Some(cid.clone()), Some(dto.customer_name.unwrap_or(n)), Some(dto.customer_mobile.unwrap_or(m)))
+            } else {
+                (None, dto.customer_name, dto.customer_mobile)
+            }
+        } else {
+            (None, dto.customer_name, dto.customer_mobile)
+        }
+    } else {
+        (None, dto.customer_name, dto.customer_mobile)
+    };
+
+    let cust_name_final = cust_name.filter(|n| !n.trim().is_empty());
+    let cust_mobile_final = cust_mobile.filter(|m| !m.trim().is_empty());
+
+    let date_str = match dto.date {
+        Some(ref d) if !d.trim().is_empty() => {
+            if d.len() == 10 {
+                format!("{}T12:00:00Z", d.trim())
+            } else {
+                d.trim().to_string()
+            }
+        }
+        _ => chrono::Utc::now().to_rfc3339(),
+    };
+
+    let desc = dto.item_name
+        .or(dto.work_detail)
+        .filter(|w| !w.trim().is_empty())
+        .unwrap_or_else(|| {
+            if dto.is_deduction {
+                "Mazdoori Deduction / Minus".to_string()
+            } else {
+                "Mazdoori Entry".to_string()
+            }
+        });
+
+    let (qty, unit) = match dto.weight {
+        Some(w) if w > 0.0 => (w, "kg".to_string()),
+        _ => (1.0, "qty".to_string()),
+    };
+
+    let total = if dto.is_deduction { 0.0 } else { amount };
+
+    tx.execute(
+        "INSERT INTO sales (id, invoice_number, customer_id, customer_name, customer_mobile, subtotal, discount, total_mazdoori, total, paid_amount, remaining_credit, payment_method, notes, created_at, sync_status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0.0, ?7, ?8, ?9, 0.0, 'cash', ?10, ?11, 'pending')",
+        params![
+            sale_id,
+            number,
+            cust_id,
+            cust_name_final,
+            cust_mobile_final,
+            total,
+            mazdoori_val,
+            total,
+            total,
+            dto.notes,
+            date_str,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    let item_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO sale_items (id, sale_id, item_name, quantity, rate, mazdoori, amount, unit)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            item_id,
+            sale_id,
+            desc,
+            qty,
+            total,
+            mazdoori_val,
+            total,
+            unit,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(number)
+}
+
+#[tauri::command]
 pub fn get_sales(limit: Option<i32>, state: State<DbState>) -> Result<Vec<SaleRecordDto>, String> {
     let conn = state.0.lock().map_err(|e| e.to_string())?;
     let limit_val = limit.unwrap_or(-1);
@@ -1538,6 +1712,59 @@ pub fn cancel_sale(sale_id: String, reason: Option<String>, state: State<DbState
     let mut conn = state.0.lock().map_err(|e| e.to_string())?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     cancel_sale_in_transaction(&sale_id, reason, &tx)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn delete_sale(sale_id: String, state: State<DbState>) -> Result<bool, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let (invoice_number, customer_id, total, paid, credit, cancelled_at): (String, Option<String>, f64, f64, f64, Option<String>) = tx.query_row(
+        "SELECT invoice_number, customer_id, total, paid_amount, remaining_credit, cancelled_at FROM sales WHERE id = ?1",
+        params![sale_id],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+    ).optional().map_err(|e| e.to_string())?.ok_or("Invoice not found")?;
+
+    if let Some(cust_id) = customer_id.filter(|id| !id.is_empty()) {
+        if cancelled_at.is_none() {
+            tx.execute(
+                "UPDATE customers
+                 SET total_purchase = ROUND(MAX(0.0, total_purchase - ?1), 2),
+                     total_paid = ROUND(MAX(0.0, total_paid - ?2), 2),
+                     balance = ROUND(balance - ?3, 2),
+                     updated_at = datetime('now'),
+                     sync_status = 'pending'
+                 WHERE id = ?4",
+                params![total, paid, credit, cust_id],
+            ).map_err(|e| e.to_string())?;
+        }
+        tx.execute("DELETE FROM customer_ledger WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+    }
+
+    tx.execute(
+        "DELETE FROM sale_item_mazdoori_tasks WHERE sale_item_id IN (SELECT id FROM sale_items WHERE sale_id = ?1)",
+        params![sale_id],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute("DELETE FROM sale_items WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM payments WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "DELETE FROM mazdoori_entries WHERE notes = ?1 OR notes = ?2",
+        params![format!("Auto-posted from sale {}", sale_id), format!("Auto-posted from sale {}", invoice_number)],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute("DELETE FROM sales WHERE id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+
+    let queue_id = Uuid::new_v4().to_string();
+    tx.execute(
+        "INSERT INTO sync_queue (id, entity_type, entity_id, operation, payload, status)
+         VALUES (?1, 'sale', ?2, 'DELETE', '{}', 'pending')",
+        params![queue_id, sale_id],
+    ).map_err(|e| e.to_string())?;
+
     tx.commit().map_err(|e| e.to_string())?;
     Ok(true)
 }

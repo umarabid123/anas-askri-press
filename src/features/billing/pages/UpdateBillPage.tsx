@@ -13,10 +13,12 @@ import {
   ChevronLeft,
   ChevronRight,
   DollarSign,
+  Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { ROUTES } from '@/constants/routes'
-import { getSales, getCustomers, receivePayment } from '@/services/sqlite.service'
+import { getSales, getCustomers, receivePayment, deleteSale } from '@/services/sqlite.service'
 import { formatPKR, formatDate, localDateKey } from '@/utils/financial'
 import { useCartStore } from '@/stores/cart.store'
 import { toast } from '@/stores/toast.store'
@@ -51,6 +53,19 @@ export function UpdateBillPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false)
   const [paymentSale, setPaymentSale] = useState<Sale | null>(null)
   const [paymentCustomer, setPaymentCustomer] = useState<Customer | null>(null)
+  const [deletingSale, setDeletingSale] = useState<Sale | null>(null)
+
+  const handleDeleteSaleConfirm = async () => {
+    if (!deletingSale) return
+    try {
+      await deleteSale(deletingSale.id)
+      toast.success(`Bill #${deletingSale.invoiceNumber} deleted successfully.`)
+      setDeletingSale(null)
+      setReloadKey((k) => k + 1)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Could not delete bill.')
+    }
+  }
 
   const loadData = async () => {
     setIsLoading(true)
@@ -612,6 +627,17 @@ export function UpdateBillPage() {
                                 </button>
                               )
                             })()}
+
+                            {/* Delete Bill Button */}
+                            <button
+                              type="button"
+                              onClick={() => setDeletingSale(sale)}
+                              className="h-8 px-2.5 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap shadow-2xs"
+                              title="Permanently delete this bill"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -736,6 +762,17 @@ export function UpdateBillPage() {
           setReloadKey((k) => k + 1)
           return receiptId
         }}
+      />
+
+      {/* Delete Bill Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={!!deletingSale}
+        onClose={() => setDeletingSale(null)}
+        onConfirm={handleDeleteSaleConfirm}
+        title="Delete Bill"
+        description={`Are you sure you want to permanently delete Bill #${deletingSale?.invoiceNumber}? This will remove the bill, payments, and adjust the customer balance.`}
+        confirmText="Delete Bill"
+        variant="danger"
       />
     </div>
   )

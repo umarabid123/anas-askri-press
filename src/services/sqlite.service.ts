@@ -160,9 +160,22 @@ export async function setCustomerOpeningBalance(customerId: string, amount: numb
     return fromRow<Customer>(customer)
   })
 }
-export async function deleteCustomer(id: string): Promise<boolean> {
-  if (isTauri()) return invoke('delete_customer', { customerId: id })
-  return transaction(t => { found(t, 'customers', id); if (t.sales.some(r => r.customer_id === id) || t.payments.some(r => r.customer_id === id) || t.customer_ledger.some(r => r.customer_id === id)) throw new Error('Customers with financial history cannot be deleted.'); t.customers = t.customers.filter(r => r.id !== id); return true })
+export async function deleteCustomer(id: string, force = false): Promise<boolean> {
+  if (isTauri()) return invoke('delete_customer', { customerId: id, force })
+  return transaction(t => {
+    found(t, 'customers', id)
+    const hasHistory = t.sales.some(r => r.customer_id === id) || t.payments.some(r => r.customer_id === id) || t.customer_ledger.some(r => r.customer_id === id)
+    if (hasHistory && !force) throw new Error('Customers with financial history cannot be deleted.')
+    if (hasHistory) {
+      t.sale_item_mazdoori_tasks = t.sale_item_mazdoori_tasks.filter(m => !t.sale_items.some(si => si.id === m.sale_item_id && t.sales.some(s => s.id === si.sale_id && s.customer_id === id)))
+      t.sale_items = t.sale_items.filter(si => !t.sales.some(s => s.id === si.sale_id && s.customer_id === id))
+      t.sales = t.sales.filter(s => s.customer_id !== id)
+      t.payments = t.payments.filter(p => p.customer_id !== id)
+      t.customer_ledger = t.customer_ledger.filter(cl => cl.customer_id !== id)
+    }
+    t.customers = t.customers.filter(r => r.id !== id)
+    return true
+  })
 }
 export async function getCustomerLedger(customerId: string): Promise<CustomerLedgerEntry[]> {
   if (isTauri()) return invoke('get_customer_ledger', { customerId })
@@ -260,6 +273,28 @@ export async function cancelSale(saleId: string, reason = ''): Promise<boolean> 
   reason = reason.trim()
   if (isTauri()) return invoke('cancel_sale', { saleId, reason: reason || null })
   return transaction(t => cancelSaleInTables(t, saleId, reason))
+}
+
+export async function deleteSale(saleId: string): Promise<boolean> {
+  if (isTauri()) return invoke('delete_sale', { saleId })
+  return transaction(t => {
+    const sale = found(t, 'sales', saleId)
+    if (sale.customer_id && !sale.cancelled_at) {
+      const cust = t.customers.find(c => c.id === sale.customer_id)
+      if (cust) {
+        cust.total_purchase = roundMoney(Math.max(0, Number(cust.total_purchase) - Number(sale.total)))
+        cust.total_paid = roundMoney(Math.max(0, Number(cust.total_paid) - Number(sale.paid_amount)))
+        cust.balance = roundMoney(Number(cust.balance) - Number(sale.remaining_credit || 0))
+      }
+    }
+    t.sale_item_mazdoori_tasks = t.sale_item_mazdoori_tasks.filter(m => !t.sale_items.some(si => si.id === m.sale_item_id && si.sale_id === saleId))
+    t.sale_items = t.sale_items.filter(si => si.sale_id !== saleId)
+    t.payments = t.payments.filter(p => p.sale_id !== saleId)
+    t.customer_ledger = t.customer_ledger.filter(cl => cl.sale_id !== saleId)
+    t.mazdoori_entries = t.mazdoori_entries.filter(m => m.notes !== 'Auto-posted from sale ' + saleId && m.notes !== 'Auto-posted from sale ' + sale.invoice_number)
+    t.sales = t.sales.filter(s => s.id !== saleId)
+    return true
+  })
 }
 
 function cancelSaleInTables(t: Tables, saleId: string, reason: string): boolean {
@@ -484,6 +519,68 @@ export async function payMazdoor(payment: { mazdoorId: string; amount: number; n
   return transaction(t => {
     const worker = found(t, 'mazdoors', payment.mazdoorId); worker.total_paid = roundMoney(Number(worker.total_paid) + payment.amount); worker.balance = roundMoney(Number(worker.balance) - payment.amount); touch(worker)
     t.mazdoori_entries.push(toRow(stamp({ id: crypto.randomUUID(), mazdoorId: worker.id, mazdoorName: worker.name, workDate: localDateKey(), workDetail: 'Payment Received / Payout', amount: 0, paidAmount: payment.amount, balance: worker.balance, notes: payment.notes || 'Payout to worker' }))); return true
+  })
+}
+export async function createDirectMazdooriEntry(dto: {
+  customerId?: string
+  customerName?: string
+  customerMobile?: string
+  amount: number
+  isDeduction?: boolean
+  itemName?: string
+  workDetail?: string
+  weight?: number
+  date?: string
+  notes?: string
+}): Promise<string> {
+  const amount = roundMoney(dto.amount)
+  assertAmount(amount, 'Mazdoori amount')
+  if (isTauri()) return invoke('create_direct_mazdoori_entry', { dto })
+  return transaction(t => {
+    const nextNum = Number(t.business_settings[0]?.next_invoice_number) || 1
+    const prefix = String(t.business_settings[0]?.invoice_prefix || 'ARKI')
+    const invoiceNumber = `${prefix}-${String(nextNum).padStart(4, '0')}`
+    if (t.business_settings[0]) t.business_settings[0].next_invoice_number = nextNum + 1
+    const mazdoori = dto.isDeduction ? -amount : amount
+    const total = dto.isDeduction ? 0 : amount
+    const saleId = crypto.randomUUID()
+    const desc = dto.itemName?.trim() || dto.workDetail?.trim() || (dto.isDeduction ? 'Mazdoori Deduction / Minus' : 'Mazdoori Entry')
+    const hasWeight = (dto.weight || 0) > 0
+    const qty = hasWeight ? Number(dto.weight) : 1
+    const unit: 'kg' | 'qty' = hasWeight ? 'kg' : 'qty'
+    const dateStr = dto.date ? (dto.date.length === 10 ? `${dto.date}T12:00:00Z` : dto.date) : new Date().toISOString()
+    const sale = {
+      id: saleId,
+      invoice_number: invoiceNumber,
+      customer_id: dto.customerId || null,
+      customer_name: dto.customerName?.trim() || null,
+      customer_mobile: dto.customerMobile?.trim() || null,
+      subtotal: total,
+      discount: 0,
+      total_mazdoori: mazdoori,
+      total,
+      paid_amount: total,
+      remaining_credit: 0,
+      payment_method: 'cash',
+      notes: dto.notes || null,
+      created_at: dateStr,
+      sync_status: 'pending',
+      items: [{
+        id: crypto.randomUUID(),
+        sale_id: saleId,
+        item_id: null,
+        item_name: desc,
+        quantity: qty,
+        rate: total,
+        mazdoori,
+        amount: total,
+        unit,
+        mazdoori_tasks: [],
+      }]
+    }
+    t.sales.unshift(toRow(sale))
+    t.sale_items.push(toRow(sale.items[0]))
+    return invoiceNumber
   })
 }
 export async function getSales(limit = -1): Promise<Sale[]> {

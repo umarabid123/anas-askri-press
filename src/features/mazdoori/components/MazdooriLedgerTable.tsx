@@ -40,7 +40,9 @@ export function MazdooriLedgerTable({ rows, totals, onViewBill }: {
             {row.sale.customerName || 'Cash Sale'}
           </button> : row.sale.customerName || 'Cash Sale'}
         </td>
-        <td className="p-3 text-right whitespace-nowrap">{formatPKR(row.mazdoori)}</td>
+        <td className={`p-3 text-right whitespace-nowrap font-medium ${row.mazdoori < 0 ? 'text-red-600 font-semibold' : 'text-slate-800'}`}>
+          {formatPKR(row.mazdoori)}
+        </td>
         <td className="p-3 text-right font-semibold text-teal-900 whitespace-nowrap">{formatPKR(row.totalMazdoori)}</td>
         <td className="p-3 text-right tabular-nums">{weightLabel(row.weight)}</td>
         <td className="p-3 text-right font-semibold text-teal-900 tabular-nums">{weightLabel(row.totalWeight)}</td>

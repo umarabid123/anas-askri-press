@@ -67,10 +67,10 @@ export function useCustomers() {
   )
 
   const removeCustomer = useCallback(
-    async (id: string): Promise<boolean> => {
+    async (id: string, force = false): Promise<boolean> => {
       setError(null)
       try {
-        await deleteCustomer(id)
+        await deleteCustomer(id, force)
         setCustomers((prev) => prev.filter((c) => c.id !== id))
         return true
       } catch (err: unknown) {

@@ -28,7 +28,7 @@ export function isInMazdooriPeriod(date: string, period: { from: string; to: str
 }
 
 export function mazdooriSummary(sales: Pick<Sale, 'createdAt' | 'cancelledAt' | 'totalMazdoori'>[]) {
-  const active = sales.filter(sale => !sale.cancelledAt && (sale.totalMazdoori || 0) > 0)
+  const active = sales.filter(sale => !sale.cancelledAt && (sale.totalMazdoori || 0) !== 0)
   return {
     total: roundMoney(active.reduce((sum, sale) => sum + (sale.totalMazdoori || 0), 0)),
     bills: active.length,
@@ -64,7 +64,7 @@ export function mazdooriLedger(sales: Sale[]) {
 export function mazdooriWeeks(sales: Sale[]) {
   const groups = new Map<string, { from: string; to: string; sales: Sale[] }>()
   for (const sale of sales) {
-    if ((sale.totalMazdoori || 0) <= 0) continue
+    if ((sale.totalMazdoori || 0) === 0) continue
     const period = mazdooriPeriod('weekly', localDateKey(sale.createdAt))
     // Friday records remain in All Time, outside the Saturday–Thursday workweek.
     if (!isInMazdooriPeriod(sale.createdAt, period)) continue
