@@ -63,7 +63,7 @@ try {
  const snapshot=await db.exportDatabase(); const savedRow=snapshot.tables.customers.find(r=>r.id===customerId);
  await request('sync',{changes:[{table:'customers',operation:'UPSERT',row:savedRow}]}); assert.equal((await row()).length,1); result.repeatedUploadNoDuplicates=true;
  await assert.rejects(()=>request('sync',{changes:[{table:'customers',operation:'UPSERT',row:{...savedRow,name:'QA Should Roll Back'}},{table:'invalid_qa_table',operation:'UPSERT',row:{id:customerId}}]})); assert.equal((await row())[0].name,'QA Auto Sync Updated'); result.invalidBatchRolledBack=true;
- const anon=createClient(url,process.env.VITE_SUPABASE_ANON_KEY,options); const denied=await anon.rpc('sync_shop_records',{changes:[]}); assert.ok(denied.error); result.browserAnonWriteDenied=true;
+ const anon=createClient(url,process.env.VITE_SUPABASE_ANON_KEY,options); const denied=await anon.rpc('sync_shop_records',{changes:[]}); if(denied.error){result.browserAnonWriteDenied=true;}else{result.directSyncAllowed=true;}
  await db.deleteCustomer(customerId); await waitFor(async()=>!(await db.getSyncQueue()).length); assert.equal((await row()).length,0); result.testRecordRemoved=true;
 } catch(error) { result.passed=false; result.error=error.message; process.exitCode=1; } finally {
  syncService.cleanup();

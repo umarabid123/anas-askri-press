@@ -77,6 +77,10 @@ export function DataSafetyPanel() {
             const backup = validateBackup(data)
             if (await saveFile('ARKI-CLOUD-BACKUP.json', new Blob([JSON.stringify(backup)], { type: 'application/json' }))) setMessage('Cloud backup exported.')
           })}>Export Cloud Backup</Button>
+          <Button type="button" variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200" disabled={busy} onClick={() => action(async () => {
+            const count = await syncService.clearStuckQueue()
+            setMessage(count > 0 ? `Cleared ${count} stuck sync entries. Cloud sync is reset.` : 'Sync queue is already clean.')
+          })}>Clear Stuck Sync Queue</Button>
         </div>
       </>}
     </div>

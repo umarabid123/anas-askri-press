@@ -631,3 +631,12 @@ export async function updateSyncStatus(queueId: string, status: 'pending' | 'syn
   }
   return true
 }
+
+export async function clearSyncQueue(failedOnly = false): Promise<number> {
+  if (isTauri()) return invoke('clear_sync_queue', { failedOnly })
+  return transaction(t => {
+    const before = t.sync_queue.length
+    t.sync_queue = failedOnly ? t.sync_queue.filter(r => r.status !== 'failed') : []
+    return before - t.sync_queue.length
+  })
+}

@@ -42,6 +42,7 @@ pub fn run() {
             update_sale,
             get_sync_queue,
             update_sync_status,
+            clear_sync_queue,
             get_mazdoors,
             create_mazdoor,
             update_mazdoor,

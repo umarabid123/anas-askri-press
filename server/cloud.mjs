@@ -30,6 +30,45 @@ export function createCloudServer(client, { maxBodyBytes = 50_000_000 } = {}) {
       let body
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')) } catch { return send(400, { error: 'Invalid JSON request.' }) }
       if (req.url === '/api/cloud/sync' && (!Array.isArray(body?.changes) || body.changes.length > 100000)) return send(400, { error: 'Invalid sync batch.' })
+      if (req.url === '/api/cloud/sync' && Array.isArray(body?.changes)) {
+        const allowedCols = {
+          business_settings: new Set(['id', 'business_name', 'subtitle', 'phone', 'address', 'logo_path', 'invoice_prefix', 'next_invoice_number', 'receipt_paper_size', 'footer_text', 'show_logo', 'default_printer', 'currency', 'currency_symbol', 'created_at', 'updated_at', 'sync_status']),
+          customers: new Set(['id', 'name', 'mobile', 'address', 'total_purchase', 'total_paid', 'balance', 'created_at', 'updated_at', 'sync_status']),
+          items: new Set(['id', 'name', 'urdu_name', 'category', 'default_rate', 'is_active', 'created_at', 'updated_at', 'sync_status']),
+          sales: new Set(['id', 'invoice_number', 'customer_id', 'customer_name', 'customer_mobile', 'subtotal', 'discount', 'total_mazdoori', 'total', 'paid_amount', 'remaining_credit', 'payment_method', 'notes', 'created_at', 'updated_at', 'sync_status', 'cancelled_at', 'cancel_reason']),
+          sale_items: new Set(['id', 'sale_id', 'item_id', 'item_name', 'quantity', 'rate', 'mazdoori', 'amount', 'created_at']),
+          sale_item_mazdoori_tasks: new Set(['id', 'sale_item_id', 'title', 'amount', 'worker_name', 'created_at']),
+          payments: new Set(['id', 'receipt_number', 'customer_id', 'sale_id', 'amount', 'payment_method', 'payment_date', 'notes', 'created_at', 'sync_status']),
+          customer_ledger: new Set(['id', 'customer_id', 'sale_id', 'payment_id', 'date', 'description', 'debit', 'credit', 'balance', 'created_at']),
+          mazdoors: new Set(['id', 'name', 'phone', 'total_work', 'total_paid', 'balance', 'created_at', 'updated_at', 'sync_status']),
+          mazdoori_entries: new Set(['id', 'mazdoor_id', 'mazdoor_name', 'work_date', 'work_detail', 'amount', 'paid_amount', 'balance', 'notes', 'created_at', 'sync_status']),
+          expenses: new Set(['id', 'category', 'amount', 'expense_date', 'payment_method', 'notes', 'created_at', 'updated_at', 'sync_status']),
+        }
+        for (const change of body.changes) {
+          if (change?.row && allowedCols[change.table]) {
+            const allowed = allowedCols[change.table]
+            for (const key of Object.keys(change.row)) {
+              if (!allowed.has(key)) delete change.row[key]
+            }
+          }
+        }
+        // If an older duplicate invoice already exists in the cloud under a different ID, clean it up first
+        const salesUpserts = body.changes.filter(c => c.table === 'sales' && c.operation === 'UPSERT' && c.row?.invoice_number)
+        for (const s of salesUpserts) {
+          const { data: existing } = await client.from('sales').select('id').eq('invoice_number', s.row.invoice_number).neq('id', s.row.id)
+          if (existing && existing.length > 0) {
+            const staleIds = existing.map(e => e.id)
+            const { data: staleItems } = await client.from('sale_items').select('id').in('sale_id', staleIds)
+            if (staleItems && staleItems.length > 0) {
+              await client.from('sale_item_mazdoori_tasks').delete().in('sale_item_id', staleItems.map(i => i.id))
+            }
+            await client.from('sale_items').delete().in('sale_id', staleIds)
+            await client.from('payments').delete().in('sale_id', staleIds)
+            await client.from('customer_ledger').delete().in('sale_id', staleIds)
+            await client.from('sales').delete().in('id', staleIds)
+          }
+        }
+      }
       const { data, error } = await client.rpc(routes[req.url], req.url === '/api/cloud/sync' ? { changes: body.changes } : {})
       if (error) {
         const missing = error.code === 'PGRST202' || error.code === '42883'

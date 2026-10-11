@@ -1,17 +1,66 @@
 import { useUIStore } from '@/stores/ui.store'
 import type { SyncResult, SyncQueueRecord } from '@/types/database'
-import { exportDatabase, getSyncQueue, updateSyncStatus } from './sqlite.service'
+import { exportDatabase, getSyncQueue, updateSyncStatus, clearSyncQueue } from './sqlite.service'
 import { syncCloudChanges, isSupabaseConfigured } from './supabase'
 import { TABLES, type Backup, type TableName, type Row } from './data-model'
 
 const aliases: Record<string, TableName> = { customer: 'customers', sale: 'sales', item: 'items', sale_item: 'sale_items', sale_item_mazdoori_task: 'sale_item_mazdoori_tasks', payment: 'payments', mazdoor: 'mazdoors', mazdoori_entry: 'mazdoori_entries', customer_ledger: 'customer_ledger', business_settings: 'business_settings', expense: 'expenses' }
+const KNOWN_COLUMNS: Partial<Record<TableName, Set<string>>> = {
+  business_settings: new Set([
+    'id', 'business_name', 'subtitle', 'phone', 'address', 'logo_path',
+    'invoice_prefix', 'next_invoice_number', 'receipt_paper_size',
+    'footer_text', 'show_logo', 'default_printer', 'currency', 'currency_symbol',
+    'created_at', 'updated_at', 'sync_status',
+  ]),
+  customers: new Set([
+    'id', 'name', 'mobile', 'address', 'total_purchase', 'total_paid',
+    'balance', 'created_at', 'updated_at', 'sync_status',
+  ]),
+  items: new Set([
+    'id', 'name', 'urdu_name', 'category', 'default_rate', 'is_active',
+    'created_at', 'updated_at', 'sync_status',
+  ]),
+  sales: new Set([
+    'id', 'invoice_number', 'customer_id', 'customer_name', 'customer_mobile',
+    'subtotal', 'discount', 'total_mazdoori', 'total', 'paid_amount',
+    'remaining_credit', 'payment_method', 'notes', 'created_at', 'updated_at',
+    'sync_status', 'cancelled_at', 'cancel_reason',
+  ]),
+  sale_items: new Set([
+    'id', 'sale_id', 'item_id', 'item_name', 'quantity', 'rate', 'mazdoori', 'amount', 'created_at',
+  ]),
+  sale_item_mazdoori_tasks: new Set([
+    'id', 'sale_item_id', 'title', 'amount', 'worker_name', 'created_at',
+  ]),
+  payments: new Set([
+    'id', 'receipt_number', 'customer_id', 'sale_id', 'amount', 'payment_method',
+    'payment_date', 'notes', 'created_at', 'sync_status',
+  ]),
+  customer_ledger: new Set([
+    'id', 'customer_id', 'sale_id', 'payment_id', 'date', 'description',
+    'debit', 'credit', 'balance', 'created_at',
+  ]),
+  mazdoors: new Set([
+    'id', 'name', 'phone', 'total_work', 'total_paid', 'balance',
+    'created_at', 'updated_at', 'sync_status',
+  ]),
+  mazdoori_entries: new Set([
+    'id', 'mazdoor_id', 'mazdoor_name', 'work_date', 'work_detail',
+    'amount', 'paid_amount', 'balance', 'notes', 'created_at', 'sync_status',
+  ]),
+  expenses: new Set([
+    'id', 'category', 'amount', 'expense_date', 'payment_method',
+    'notes', 'created_at', 'updated_at', 'sync_status',
+  ]),
+}
+
 export interface Change { table: TableName; operation: 'UPSERT' | 'DELETE'; row: Row }
 export function buildChanges(backup: Backup, queue: SyncQueueRecord[]): Change[] {
   const changes = new Map<string, Change>()
   for (const record of queue) {
     const table = aliases[record.entityType] || record.entityType as TableName
     if (!TABLES.includes(table) || table === 'sync_queue') throw new Error('Unsupported sync entity: ' + record.entityType)
-    const row = backup.tables[table].find(row => row.id === record.entityId)
+    const row = backup.tables[table]?.find(row => row.id === record.entityId)
     changes.set(table + ':' + record.entityId, row ? { table, operation: 'UPSERT', row } : { table, operation: 'DELETE', row: { id: record.entityId } })
   }
   // Include parents for retried/legacy records, ensuring foreign keys resolve in one atomic cloud transaction.
@@ -24,26 +73,58 @@ export function buildChanges(backup: Backup, queue: SyncQueueRecord[]): Change[]
     for (const [field, table] of references[change.table] || []) {
       const id = change.row[field]
       if (!id || changes.has(table + ':' + id)) continue
-      const row = backup.tables[table].find(row => row.id === id)
-      if (!row) throw new Error('Missing sync parent: ' + table)
+      const row = backup.tables[table]?.find(row => row.id === id)
+      if (!row) {
+        if (change.table === 'sales' && field === 'customer_id') {
+          change.row[field] = null
+          continue
+        }
+        continue
+      }
       const parent: Change = { table, operation: 'UPSERT', row }
       changes.set(table + ':' + id, parent); parents(parent)
     }
   }
+  // Include child lines and tasks for any upserted sales so invoice total balance checks pass
+  for (const change of Array.from(changes.values())) {
+    if (change.table === 'sales' && change.operation === 'UPSERT' && !change.row.cancelled_at) {
+      const saleId = change.row.id
+      const saleItems = backup.tables.sale_items?.filter(i => i.sale_id === saleId) || []
+      for (const item of saleItems) {
+        if (!changes.has('sale_items:' + item.id)) {
+          changes.set('sale_items:' + item.id, { table: 'sale_items', operation: 'UPSERT', row: item })
+        }
+        const tasks = backup.tables.sale_item_mazdoori_tasks?.filter(t => t.sale_item_id === item.id) || []
+        for (const task of tasks) {
+          if (!changes.has('sale_item_mazdoori_tasks:' + task.id)) {
+            changes.set('sale_item_mazdoori_tasks:' + task.id, { table: 'sale_item_mazdoori_tasks', operation: 'UPSERT', row: task })
+          }
+        }
+      }
+    }
+  }
   for (const change of Array.from(changes.values())) if (change.operation === 'UPSERT') parents(change)
-  return Array.from(changes.values()).map(change => ({
-    ...change,
-    row: Object.fromEntries(
-      Object.entries(change.row)
-        .filter(([key, value]) => !(key === 'urdu_name' && (value === null || value === undefined || value === '')) && key !== 'unit')
-        .map(([key, value]) => [
-          key,
-          ['created_at', 'updated_at', 'payment_date', 'date'].includes(key) && typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-            ? value.replace(' ', 'T') + 'Z'
-            : value,
-        ])
-    ),
-  })).sort((a, b) => {
+  return Array.from(changes.values()).map(change => {
+    const allowed = KNOWN_COLUMNS[change.table]
+    return {
+      ...change,
+      row: Object.fromEntries(
+        Object.entries(change.row)
+          .filter(([key, value]) => {
+            if (allowed && !allowed.has(key)) return false
+            if (key === 'urdu_name' && (value === null || value === undefined || value === '')) return false
+            if (key === 'unit' || key === 'email' || key === 'owner_name' || key === 'ownerName' || key === 'qr_code_path' || key === 'qrCodePath') return false
+            return true
+          })
+          .map(([key, value]) => [
+            key,
+            ['created_at', 'updated_at', 'payment_date', 'date'].includes(key) && typeof value === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+              ? value.replace(' ', 'T') + 'Z'
+              : value,
+          ])
+      ),
+    }
+  }).sort((a, b) => {
     if (a.operation !== b.operation) return a.operation === 'UPSERT' ? -1 : 1
     const order = TABLES.indexOf(a.table) - TABLES.indexOf(b.table)
     return a.operation === 'DELETE' ? -order : order
@@ -133,6 +214,13 @@ class SyncService {
     return result
   }
   public getError() { return this.lastError }
+  public async clearStuckQueue(): Promise<number> {
+    const count = await clearSyncQueue(false)
+    this.lastError = null
+    this.retryAt = 0
+    useUIStore.getState().setSyncStatus('synced')
+    return count
+  }
   public async pause() {
     localStorage.setItem('arki_sync_paused', 'true')
     const deadline = Date.now() + 30000

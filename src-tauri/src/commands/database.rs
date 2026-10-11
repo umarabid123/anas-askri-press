@@ -545,6 +545,9 @@ fn create_sale_in_transaction(mut sale: CreateSaleDto, tx: &rusqlite::Transactio
         }
     };
 
+    sale.id = Some(sale_id.clone());
+    sale.invoice_number = Some(invoice_number.clone());
+
     // 1. Insert into sales
     tx.execute(
         "INSERT INTO sales (id, invoice_number, customer_id, customer_name, customer_mobile, subtotal, discount, total_mazdoori, total, paid_amount, remaining_credit, payment_method, notes, created_at, sync_status)
@@ -799,6 +802,17 @@ pub fn update_sync_status(
         }
     }
     Ok(true)
+}
+
+#[tauri::command]
+pub fn clear_sync_queue(failed_only: Option<bool>, state: State<DbState>) -> Result<usize, String> {
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let affected = if failed_only.unwrap_or(false) {
+        conn.execute("DELETE FROM sync_queue WHERE status = 'failed'", [])
+    } else {
+        conn.execute("DELETE FROM sync_queue", [])
+    }.map_err(|e| e.to_string())?;
+    Ok(affected)
 }
 
 #[tauri::command]
