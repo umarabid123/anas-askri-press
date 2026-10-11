@@ -8,6 +8,7 @@ import {
   deleteCustomer,
   receivePayment,
 } from '@/services/sqlite.service'
+import { syncService } from '@/services/sync.service'
 
 export function useCustomers() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -38,6 +39,7 @@ export function useCustomers() {
       try {
         const created = await createCustomer(formData)
         setCustomers((prev) => [created, ...prev])
+        void syncService.processQueue().catch(() => {})
         return created
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
@@ -56,6 +58,7 @@ export function useCustomers() {
         setCustomers((prev) =>
           prev.map((c) => (c.id === updated.id ? updated : c))
         )
+        void syncService.processQueue().catch(() => {})
         return updated
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
@@ -72,6 +75,7 @@ export function useCustomers() {
       try {
         await deleteCustomer(id, force)
         setCustomers((prev) => prev.filter((c) => c.id !== id))
+        void syncService.processQueue().catch(() => {})
         return true
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
@@ -94,6 +98,7 @@ export function useCustomers() {
         const paymentId = await receivePayment(payment)
         // Refresh customer data to update balances
         await loadCustomers()
+        void syncService.processQueue().catch(() => {})
         return paymentId
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)

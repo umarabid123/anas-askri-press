@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Item, ItemFormData } from '@/types'
 import { getItems, createItem, updateItem, deleteItem } from '@/services/sqlite.service'
+import { syncService } from '@/services/sync.service'
 
 interface ProductsState {
   products: Item[]
@@ -33,6 +34,7 @@ export const useProductStore = create<ProductsState>((set) => ({
   addProduct: async (data: ItemFormData) => {
     const created = await createItem(data)
     set((state) => ({ products: [created, ...state.products.filter(p => p.id !== created.id)] }))
+    void syncService.processQueue().catch(() => {})
     return created
   },
 
@@ -41,6 +43,7 @@ export const useProductStore = create<ProductsState>((set) => ({
     set((state) => ({
       products: state.products.map((p) => (p.id === updated.id ? updated : p)),
     }))
+    void syncService.processQueue().catch(() => {})
     return updated
   },
 
@@ -49,6 +52,7 @@ export const useProductStore = create<ProductsState>((set) => ({
     set((state) => ({
       products: state.products.filter((p) => p.id !== id),
     }))
+    void syncService.processQueue().catch(() => {})
     return true
   },
 }))
