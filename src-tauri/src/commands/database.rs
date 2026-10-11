@@ -1025,7 +1025,6 @@ pub fn receive_payment(mut payment: ReceivePaymentDto, state: State<DbState>) ->
         .filter(|id| !id.trim().is_empty())
         .or(sale_customer_id);
 
-    let mut new_balance = 0.0;
     if let Some(ref c_id) = target_customer_id {
         let cust_bal: Option<f64> = tx.query_row(
             "SELECT balance FROM customers WHERE id = ?1",
@@ -1039,7 +1038,7 @@ pub fn receive_payment(mut payment: ReceivePaymentDto, state: State<DbState>) ->
                 return Err("Payment cannot exceed outstanding balance".into());
             }
 
-            new_balance = ((current_balance - payment.amount) * 100.0).round() / 100.0;
+            let new_balance = ((current_balance - payment.amount) * 100.0).round() / 100.0;
 
             tx.execute(
                 "UPDATE customers
@@ -1384,7 +1383,7 @@ pub fn delete_mazdoori_entry(entry_id: String, state: State<DbState>) -> Result<
 }
 
 #[tauri::command]
-pub fn pay_mazdoor(mut payment: PayMazdoorDto, state: State<DbState>) -> Result<bool, String> {
+pub fn pay_mazdoor(payment: PayMazdoorDto, state: State<DbState>) -> Result<bool, String> {
     if payment.amount <= 0.0 {
         return Err("Payout amount must be greater than zero".to_string());
     }
