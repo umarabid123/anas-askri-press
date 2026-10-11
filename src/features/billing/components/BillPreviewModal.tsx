@@ -250,7 +250,8 @@ export function BillPreviewModal({
         console.warn('Clipboard write warning:', clipErr)
       }
 
-      const waUrl = formattedPhone ? `https://wa.me/${formattedPhone}` : 'https://wa.me/'
+      // Launch WhatsApp application directly to this customer's chat
+      const waUrl = formattedPhone ? `whatsapp://send?phone=${formattedPhone}` : 'whatsapp://'
 
       await openWhatsApp(waUrl)
       setShareNotice('Receipt image copied. In the WhatsApp chat press Ctrl+V, then click Send.')

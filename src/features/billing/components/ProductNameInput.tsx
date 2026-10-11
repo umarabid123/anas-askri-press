@@ -47,9 +47,12 @@ export function ProductNameInput({ value, onChange, onKeyDown, cell, invalid, ro
       const below = window.innerHeight - rect.bottom - 12
       const above = rect.top - 12
       const height = Math.min(260, Math.max(below, above))
+      const menuWidth = Math.max(rect.width, 360)
+      const maxLeft = Math.max(8, window.innerWidth - menuWidth - 12)
+      const left = Math.min(rect.left, maxLeft)
       setPosition({
-        left: rect.left,
-        width: rect.width,
+        left,
+        width: menuWidth,
         top: below >= height ? rect.bottom + 4 : rect.top - height - 4,
         maxHeight: height,
       })
@@ -129,7 +132,7 @@ export function ProductNameInput({ value, onChange, onKeyDown, cell, invalid, ro
         }}
         placeholder="Choose a product or type here"
         className={cn(
-          'w-full h-8 pl-3 pr-8 text-sm rounded-lg bg-white focus:outline-none transition-colors',
+          'w-full h-9 pl-3 pr-8 text-sm rounded-lg bg-white focus:outline-none transition-colors',
           invalid
             ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900'
             : 'border border-slate-200 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
@@ -146,7 +149,7 @@ export function ProductNameInput({ value, onChange, onKeyDown, cell, invalid, ro
           setOpen(!open)
           setActiveIndex(-1)
         }}
-        className="absolute right-1 top-1 h-6 w-6 flex items-center justify-center text-slate-500 hover:text-blue-600 cursor-pointer"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 flex items-center justify-center text-slate-500 hover:text-blue-600 cursor-pointer"
       >
         <ChevronDown className="h-4 w-4" />
       </button>

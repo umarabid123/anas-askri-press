@@ -9,7 +9,7 @@ import { automaticBackup, exportBackup, saveFile } from '@/services/files.servic
 import { exportCloudRecords, isSupabaseConfigured } from '@/services/supabase'
 import { syncService } from '@/services/sync.service'
 import { toast } from '@/stores/toast.store'
-import { checkAppUpdate, type UpdateCheckResult } from '@/services/updater.service'
+import { checkAppUpdate, type UpdateCheckResult, APP_VERSION } from '@/services/updater.service'
 import { UpdateModal } from '@/components/ui/UpdateModal'
 import { RefreshCw, Sparkles } from 'lucide-react'
 
@@ -91,7 +91,7 @@ export function DataSafetyPanel() {
         <h3 className="font-semibold flex items-center gap-2">
           <span>Application Updates</span>
           <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-normal">
-            v0.1.0
+            v{APP_VERSION}
           </span>
         </h3>
       </div>

@@ -482,27 +482,41 @@ export function NewBillPage() {
 
           {/* Items Table with Mazdoori Column */}
           <div className="border border-slate-200/80 rounded-xl overflow-x-auto">
-            <table className="w-full min-w-[550px] text-left text-sm border-collapse">
+            <table className="w-full min-w-[760px] table-fixed text-left text-sm border-collapse">
+              <colgroup>
+                <col className="w-8" />
+                <col className="w-auto" />
+                <col className="w-28" />
+                <col className="w-20" />
+                <col className="w-20" />
+                <col className="w-24" />
+                <col className="w-9" />
+              </colgroup>
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
-                  <th className="py-2.5 px-3 w-8 text-center">#</th>
-                  <th className="py-2.5 px-3">
-                    Product / Description <span className="text-red-500 font-bold">*</span> <span className="font-normal text-slate-500 text-[11px]">(Choose or type)</span>
+                  <th className="py-2.5 px-1.5 text-center">#</th>
+                  <th className="py-2 px-3">
+                    <div className="font-semibold text-slate-700 leading-tight">
+                      Product / Description <span className="text-red-500 font-bold">*</span>
+                    </div>
+                    <div className="font-normal text-slate-400 text-[10px] leading-tight mt-0.5">
+                      Choose or type
+                    </div>
                   </th>
-                  <th className="py-2.5 px-2 w-32 text-center">
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap">
                     Qty / Unit <span className="text-red-500 font-bold">*</span>
                   </th>
-                  <th className="py-2.5 px-2 w-24 text-center">
+                  <th className="py-2.5 px-1.5 text-center whitespace-nowrap">
                     Rate <span className="text-red-500 font-bold">*</span>
                   </th>
-                  <th className="py-2.5 px-2 w-28 text-center">
+                  <th className="py-2.5 px-1 text-center whitespace-nowrap">
                     <span className="flex items-center justify-center gap-1">
                       <HardHat className="w-3.5 h-3.5 text-teal-700 stroke-[2.2]" />
                       <span>Mazdoori</span>
                     </span>
                   </th>
-                  <th className="py-2.5 px-3 w-28 text-center">Amount</th>
-                  <th className="py-2.5 px-2 w-8 text-center"></th>
+                  <th className="py-2.5 px-2 text-center whitespace-nowrap">Amount</th>
+                  <th className="py-2.5 px-1 text-center"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -514,7 +528,7 @@ export function NewBillPage() {
 
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/50">
-                      <td className="py-2.5 px-3 text-center text-xs font-medium text-slate-600">
+                      <td className="py-2.5 px-1.5 text-center text-xs font-medium text-slate-600">
                         {index + 1}
                       </td>
 
@@ -538,8 +552,8 @@ export function NewBillPage() {
                       </td>
 
                       {/* Quantity & Unit Selection */}
-                      <td className="py-2.5 px-2 text-center">
-                        <div className="flex items-center gap-1">
+                      <td className="py-2.5 px-1.5 text-center">
+                        <div className="flex items-center gap-1 justify-center">
                           <input
                             type="number"
                             min="0.01"
@@ -552,7 +566,7 @@ export function NewBillPage() {
                               updateItem(item.id, { quantity: Math.max(0, parseFloat(e.target.value) || 0) })
                             }
                             className={cn(
-                              'flex-1 min-w-[50px] h-9 text-center tabular-nums text-sm rounded-md bg-white focus:outline-none transition-colors',
+                              'w-[68px] min-w-0 h-9 text-center tabular-nums text-sm rounded-md bg-white focus:outline-none transition-colors',
                               isQtyInvalid
                                 ? 'border-2 border-red-500 ring-1 ring-red-400 bg-red-50/20 text-slate-900 font-semibold'
                                 : 'border border-slate-300 text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
@@ -563,7 +577,7 @@ export function NewBillPage() {
                             onChange={(e) =>
                               updateItem(item.id, { unit: e.target.value as 'kg' | 'qty' })
                             }
-                            className="h-9 px-1 text-xs font-semibold rounded-md border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 focus:border-blue-500 focus:outline-none cursor-pointer shrink-0"
+                            className="w-[42px] h-9 px-0.5 text-[11px] font-semibold text-center rounded-md border border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100 focus:border-blue-500 focus:outline-none cursor-pointer shrink-0"
                             title="Unit: 'kg' counts towards total weight; 'QTY' is excluded from weight"
                           >
                             <option value="kg">kg</option>
@@ -620,7 +634,7 @@ export function NewBillPage() {
                       </td>
 
                       {/* Row Total Amount */}
-                      <td className="py-2.5 px-3 text-center font-bold text-slate-900 text-sm">
+                      <td className="py-2.5 px-3 text-center font-bold text-slate-900 text-sm truncate">
                         {item.amount.toLocaleString()}
                       </td>
 
@@ -629,7 +643,7 @@ export function NewBillPage() {
                         <button
                           type="button"
                           onClick={() => removeItem(item.id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md p-2 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-red-400"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md p-1.5 transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-red-400"
                           title="Delete item"
                         >
                           <Trash2 className="w-4 h-4 stroke-[2.2]" />

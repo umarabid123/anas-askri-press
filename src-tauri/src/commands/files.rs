@@ -72,6 +72,8 @@ pub fn create_pre_update_backup(app: AppHandle, state: State<DbState>, target_ve
 
 #[tauri::command]
 pub fn open_whatsapp(app: AppHandle, url: String) -> Result<(), String> {
-    if !url.starts_with("https://wa.me/") { return Err("Only WhatsApp links are allowed".into()); }
+    if !url.starts_with("https://wa.me/") && !url.starts_with("whatsapp://") {
+        return Err("Only WhatsApp links are allowed".into());
+    }
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }

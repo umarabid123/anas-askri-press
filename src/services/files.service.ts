@@ -23,6 +23,19 @@ export async function automaticBackup() {
   localStorage.setItem('arki_daily_backup_date', date)
 }
 export async function openWhatsApp(url: string) {
-  if (isTauri()) await invoke('open_whatsapp', { url })
-  else window.open(url, '_blank', 'noopener,noreferrer')
+  if (isTauri()) {
+    try {
+      await invoke('open_whatsapp', { url })
+    } catch (err) {
+      if (url.startsWith('whatsapp://')) {
+        const phone = url.match(/phone=([0-9]+)/)?.[1] || ''
+        const webUrl = phone ? `https://wa.me/${phone}` : 'https://wa.me/'
+        await invoke('open_whatsapp', { url: webUrl })
+      } else {
+        throw err
+      }
+    }
+  } else {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 }

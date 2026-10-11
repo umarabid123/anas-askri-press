@@ -18,6 +18,8 @@ export interface UpdateDownloadProgress {
   isInstalling: boolean
 }
 
+export const APP_VERSION = '1.0.1'
+
 // Keep active update reference in memory
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeUpdateRef: any = null
@@ -26,7 +28,7 @@ export async function checkAppUpdate(): Promise<UpdateCheckResult> {
   if (!isTauri()) {
     return {
       available: false,
-      currentVersion: '0.1.0',
+      currentVersion: APP_VERSION,
     }
   }
 
@@ -47,7 +49,7 @@ export async function checkAppUpdate(): Promise<UpdateCheckResult> {
 
     return {
       available: false,
-      currentVersion: '0.1.0',
+      currentVersion: APP_VERSION,
     }
   } catch (err) {
     const raw = (err instanceof Error ? err.message : String(err)).toLowerCase()
@@ -61,7 +63,7 @@ export async function checkAppUpdate(): Promise<UpdateCheckResult> {
     ) {
       return {
         available: false,
-        currentVersion: '0.1.0',
+        currentVersion: APP_VERSION,
       }
     }
 
@@ -75,14 +77,14 @@ export async function checkAppUpdate(): Promise<UpdateCheckResult> {
     ) {
       return {
         available: false,
-        currentVersion: '0.1.0',
+        currentVersion: APP_VERSION,
         error: 'Unable to reach the update server. Please check your internet connection.',
       }
     }
 
     return {
       available: false,
-      currentVersion: '0.1.0',
+      currentVersion: APP_VERSION,
       error: 'Unable to check for updates right now. Please try again later.',
     }
   }
