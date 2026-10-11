@@ -43,6 +43,34 @@ pub fn daily_backup(app: AppHandle, state: State<DbState>) -> Result<bool, Strin
 }
 
 #[tauri::command]
+pub fn create_pre_update_backup(app: AppHandle, state: State<DbState>, target_version: String) -> Result<String, String> {
+    let app_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let directory = app_dir.join("backups");
+    std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+
+    let safe_version = target_version.replace(|c: char| !c.is_alphanumeric() && c != '.' && c != '-', "_");
+    let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
+    let json_filename = format!("pre-update-{}-{}.json", safe_version, timestamp);
+    let json_path = directory.join(&json_filename);
+
+    // 1. Create portable structured JSON snapshot
+    let conn = state.0.lock().map_err(|e| e.to_string())?;
+    let data = serde_json::to_vec_pretty(&super::snapshot::snapshot(&conn)?).map_err(|e| e.to_string())?;
+    std::fs::write(&json_path, data).map_err(|e| e.to_string())?;
+
+    // 2. Also copy raw SQLite database file if it exists
+    let db_path = app_dir.join("arki_pos.db");
+    if db_path.exists() {
+        let raw_bak_filename = format!("arki_pos_pre_{}_{}.db", safe_version, timestamp);
+        let raw_bak_path = directory.join(raw_bak_filename);
+        let _ = std::fs::copy(&db_path, &raw_bak_path);
+    }
+
+    log::info!("Pre-update safety backup created: {:?}", json_filename);
+    Ok(json_filename)
+}
+
+#[tauri::command]
 pub fn open_whatsapp(app: AppHandle, url: String) -> Result<(), String> {
     if !url.starts_with("https://wa.me/") { return Err("Only WhatsApp links are allowed".into()); }
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())

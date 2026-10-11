@@ -9,6 +9,9 @@ import { automaticBackup, exportBackup, saveFile } from '@/services/files.servic
 import { exportCloudRecords, isSupabaseConfigured } from '@/services/supabase'
 import { syncService } from '@/services/sync.service'
 import { toast } from '@/stores/toast.store'
+import { checkAppUpdate, type UpdateCheckResult } from '@/services/updater.service'
+import { UpdateModal } from '@/components/ui/UpdateModal'
+import { RefreshCw, Sparkles } from 'lucide-react'
 
 export function DataSafetyPanel() {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -17,6 +20,10 @@ export function DataSafetyPanel() {
   const [error, setError] = useState('')
   const [pending, setPending] = useState<Backup | null>(null)
   const [daily, setDaily] = useState(localStorage.getItem('arki_daily_backup') === 'true')
+  const [autoCheckUpdates, setAutoCheckUpdates] = useState(localStorage.getItem('arki_auto_check_updates') !== 'false')
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null)
+  const [showUpdateModal, setShowUpdateModal] = useState(false)
   async function action(work: () => Promise<void>) {
     if (busy) return
     setBusy(true); setError(''); setMessage('')
@@ -73,6 +80,75 @@ export function DataSafetyPanel() {
         </div>
       </>}
     </div>
+
+    {/* Zero-Data-Loss Software Updates Section */}
+    <div className="border-t pt-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold flex items-center gap-2">
+          <span>Application Updates</span>
+          <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-normal">
+            v0.1.0
+          </span>
+        </h3>
+      </div>
+      <p className="text-sm text-slate-600">
+        Updating to new releases replaces application code while keeping your SQLite database, invoices, and settings completely intact. An automatic safety snapshot is created before updating.
+      </p>
+      
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={checkingUpdate || busy}
+          onClick={async () => {
+            setCheckingUpdate(true)
+            try {
+              const res = await checkAppUpdate()
+              setUpdateInfo(res)
+              if (res.available) {
+                setShowUpdateModal(true)
+                toast.success(`Update ${res.newVersion} is ready to install!`)
+              } else if (res.error) {
+                toast.error(res.error)
+              } else {
+                toast.info('Your desktop application is already up to date.')
+              }
+            } finally {
+              setCheckingUpdate(false)
+            }
+          }}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+          {checkingUpdate ? 'Checking for Updates…' : 'Check for Updates'}
+        </Button>
+
+        {updateInfo?.available && (
+          <Button
+            type="button"
+            onClick={() => setShowUpdateModal(true)}
+            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Sparkles className="w-4 h-4" />
+            Install Update {updateInfo.newVersion}
+          </Button>
+        )}
+      </div>
+
+      <label className="flex gap-2 items-center text-sm text-slate-700 pt-1">
+        <input
+          type="checkbox"
+          checked={autoCheckUpdates}
+          onChange={(e) => {
+            const checked = e.target.checked
+            setAutoCheckUpdates(checked)
+            localStorage.setItem('arki_auto_check_updates', String(checked))
+          }}
+        />
+        Check for updates automatically when the application opens
+      </label>
+    </div>
+
     <ConfirmDialog isOpen={!!pending} onClose={() => { if (!busy) setPending(null) }} title="Replace local records?"
       description={pending ? `Restore ${pending.tables.sales.length} invoices, ${pending.tables.customers.length} customers, ${pending.tables.mazdoors.length} workers and ${pending.tables.payments.length} receipts? Current records will be replaced after a recovery copy is saved. Cloud uploads will stay paused until you choose Upload / Resume Sync.` : ''}
       isLoading={busy}
@@ -84,6 +160,14 @@ export function DataSafetyPanel() {
         setPending(null); setMessage('Records restored. Reloading the app…')
         window.location.reload()
       })} />
+
+    {showUpdateModal && updateInfo && (
+      <UpdateModal
+        updateInfo={updateInfo}
+        onClose={() => setShowUpdateModal(false)}
+      />
+    )}
+
     <p className="text-xs text-slate-500">Only version 2 Arki backups can be restored. Older incomplete JSON exports cannot safely reconstruct missing invoice items or payment history.</p>
   </Card>
 }

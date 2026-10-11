@@ -10,6 +10,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -64,6 +66,7 @@ pub fn run() {
             save_export_file,
             pick_backup_file,
             daily_backup,
+            create_pre_update_backup,
             open_whatsapp,
         ])
         .run(tauri::generate_context!())
