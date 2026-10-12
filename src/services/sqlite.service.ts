@@ -96,6 +96,48 @@ export async function restoreDatabase(input: unknown): Promise<boolean> {
   useUIStore.getState().setSyncStatus('pending')
   return true
 }
+export async function mergeCloudRecords(input: unknown): Promise<{ mergedCount: number }> {
+  if (isTauri()) {
+    const mergedCount = await invoke<number>('merge_cloud_records', { payload: input })
+    return { mergedCount }
+  }
+  const data = input as { tables?: Tables }
+  const tables = data?.tables
+  if (!tables) return { mergedCount: 0 }
+  const current = readBrowser()
+  let mergedCount = 0
+  const touchedIds = new Set<string>()
+
+  for (const table of TABLES.filter(t => t !== 'sync_queue')) {
+    const remoteRows = tables[table]
+    if (!Array.isArray(remoteRows)) continue
+    for (const remoteRow of remoteRows) {
+      if (!remoteRow.id) continue
+      const existingIdx = current[table].findIndex(r => r.id === remoteRow.id)
+      if (existingIdx >= 0) {
+        if (table === 'business_settings') {
+          const prev = current.business_settings[existingIdx]
+          current.business_settings[existingIdx] = {
+            ...prev,
+            ...remoteRow,
+            default_printer: prev.default_printer || remoteRow.default_printer,
+            next_invoice_number: Math.max(Number(prev.next_invoice_number) || 0, Number(remoteRow.next_invoice_number) || 0),
+          }
+        } else {
+          current[table][existingIdx] = { ...current[table][existingIdx], ...remoteRow }
+        }
+      } else {
+        current[table].push(remoteRow)
+      }
+      touchedIds.add(String(remoteRow.id))
+      mergedCount++
+    }
+  }
+
+  current.sync_queue = current.sync_queue.filter(q => !touchedIds.has(String(q.entity_id)))
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
+  return { mergedCount }
+}
 export async function getCustomers(): Promise<Customer[]> { if (isTauri()) return invoke('get_customers'); return readBrowser().customers.map(fromRow<Customer>) }
 export async function getCustomerById(id: string): Promise<Customer | null> { if (isTauri()) return invoke('get_customer_by_id', { customerId: id }); return (await getCustomers()).find(c => c.id === id) || null }
 export async function createCustomer(input: CustomerFormData): Promise<Customer> {

@@ -16,7 +16,7 @@ export function createCloudServer(client, { maxBodyBytes = 50_000_000 } = {}) {
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
       return send(204, null)
     }
-    const routes = { '/api/cloud/check': 'check_shop_sync', '/api/cloud/sync': 'sync_shop_records', '/api/cloud/export': 'export_shop_records' }
+    const routes = { '/api/cloud/check': 'check_shop_sync', '/api/cloud/sync': 'sync_shop_records', '/api/cloud/export': 'export_shop_records', '/api/cloud/pull': 'export_shop_records' }
     if (!routes[req.url] || req.method !== 'POST') return send(404, { error: 'Unknown cloud operation.' })
     if (!req.headers['content-type']?.startsWith('application/json')) return send(415, { error: 'JSON request required.' })
     if (!client) return send(503, { error: 'Cloud setup needed: add SUPABASE_SECRET_KEY to the local server ENV. Records remain saved locally.' })
@@ -74,7 +74,7 @@ export function createCloudServer(client, { maxBodyBytes = 50_000_000 } = {}) {
         const missing = error.code === 'PGRST202' || error.code === '42883'
         return send(502, { error: missing ? 'Supabase sync setup is not applied yet. Run supabase/setup-local-sync.sql once in the Supabase SQL Editor. Records remain saved locally.' : 'Cloud upload was not completed. Records remain saved locally. ' + error.message })
       }
-      return send(200, req.url === '/api/cloud/export' ? data : { ok: true })
+      return send(200, (req.url === '/api/cloud/export' || req.url === '/api/cloud/pull') ? data : { ok: true })
     } catch {
       return send(502, { error: 'Cloud connection failed or timed out. Records remain saved locally and will retry.' })
     }

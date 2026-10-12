@@ -43,13 +43,19 @@ export function MazdooriPage() {
   const [isAddMazdooriOpen, setIsAddMazdooriOpen] = useState(false)
 
   useEffect(() => {
-    Promise.all([getSales(), getCustomers()])
-      .then(([s, c]) => {
-        setSales(s.filter((sale) => (sale.totalMazdoori || 0) !== 0))
-        setCustomers(c)
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
-      .finally(() => setIsLoading(false))
+    const fetchData = () => {
+      Promise.all([getSales(), getCustomers()])
+        .then(([s, c]) => {
+          setSales(s.filter((sale) => (sale.totalMazdoori || 0) !== 0))
+          setCustomers(c)
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+        .finally(() => setIsLoading(false))
+    }
+    fetchData()
+    const handleRemoteSync = () => { fetchData() }
+    window.addEventListener('arki_data_synced', handleRemoteSync)
+    return () => window.removeEventListener('arki_data_synced', handleRemoteSync)
   }, [reloadKey])
 
   const todayKey = localDateKey()

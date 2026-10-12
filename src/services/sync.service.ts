@@ -1,7 +1,7 @@
 import { useUIStore } from '@/stores/ui.store'
 import type { SyncResult, SyncQueueRecord } from '@/types/database'
-import { exportDatabase, getSyncQueue, updateSyncStatus, clearSyncQueue } from './sqlite.service'
-import { syncCloudChanges, isSupabaseConfigured } from './supabase'
+import { exportDatabase, getSyncQueue, updateSyncStatus, clearSyncQueue, mergeCloudRecords } from './sqlite.service'
+import { syncCloudChanges, isSupabaseConfigured, pullCloudRecords } from './supabase'
 import { TABLES, type Backup, type TableName, type Row } from './data-model'
 
 const aliases: Record<string, TableName> = { customer: 'customers', sale: 'sales', item: 'items', sale_item: 'sale_items', sale_item_mazdoori_task: 'sale_item_mazdoori_tasks', payment: 'payments', mazdoor: 'mazdoors', mazdoori_entry: 'mazdoori_entries', customer_ledger: 'customer_ledger', business_settings: 'business_settings', expense: 'expenses' }
@@ -192,7 +192,11 @@ class SyncService {
         id: String(r.id), entityType: String(r.entity_type) as SyncQueueRecord['entityType'], entityId: String(r.entity_id),
         operation: String(r.operation) as SyncQueueRecord['operation'], payload: {}, status: 'pending', retryCount: Number(r.retry_count), lastError: null, createdAt: String(r.created_at), updatedAt: String(r.updated_at),
       }))
-      if (!queue.length) { useUIStore.getState().setSyncStatus('synced'); return result }
+      if (!queue.length) {
+        useUIStore.getState().setSyncStatus('synced')
+        await this.pullRemoteChanges()
+        return result
+      }
       useUIStore.getState().setSyncStatus('syncing')
       result.totalProcessed = queue.length
       const changes = buildChanges(snapshot, queue)
@@ -203,6 +207,7 @@ class SyncService {
       const hasMore = (await getSyncQueue()).length > 0
       useUIStore.getState().setSyncStatus(hasMore ? 'pending' : 'synced')
       if (hasMore) this.schedule()
+      await this.pullRemoteChanges()
     } catch (err) {
       this.lastError = err instanceof Error ? err.message : String(err)
       result.failedCount = queue.length || 1
@@ -212,6 +217,39 @@ class SyncService {
       useUIStore.getState().setSyncStatus('failed')
     } finally { this.processing = false }
     return result
+  }
+  private pulling = false
+  public async pullRemoteChanges(): Promise<number> {
+    if (this.pulling) return 0
+    if (localStorage.getItem('arki_sync_paused') === 'true') return 0
+    if (!isSupabaseConfigured()) return 0
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return 0
+
+    this.pulling = true
+    try {
+      const since = localStorage.getItem('arki_last_pulled_at')
+      const remoteData = await pullCloudRecords(since)
+      if (remoteData && typeof remoteData === 'object' && 'tables' in remoteData) {
+        const { mergedCount } = await mergeCloudRecords(remoteData)
+        const now = new Date().toISOString()
+        localStorage.setItem('arki_last_pulled_at', now)
+        useUIStore.getState().setLastSyncTime(now)
+        if (mergedCount > 0 && typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          try {
+            const evt = typeof CustomEvent !== 'undefined' ? new CustomEvent('arki_data_synced', { detail: { mergedCount } }) : { type: 'arki_data_synced' }
+            window.dispatchEvent(evt as Event)
+          } catch {
+            // ignore event dispatch errors
+          }
+        }
+        return mergedCount
+      }
+    } catch (err) {
+      console.warn('Pull sync note:', err instanceof Error ? err.message : err)
+    } finally {
+      this.pulling = false
+    }
+    return 0
   }
   public getError() { return this.lastError }
   public async clearStuckQueue(): Promise<number> {

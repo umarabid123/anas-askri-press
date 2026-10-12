@@ -66,6 +66,7 @@ pub fn run() {
             update_business_settings,
             export_database,
             restore_database,
+            merge_cloud_records,
             save_export_file,
             pick_backup_file,
             daily_backup,

@@ -31,6 +31,9 @@ export function useCustomers() {
 
   useEffect(() => {
     loadCustomers()
+    const handleRemoteSync = () => { void loadCustomers() }
+    window.addEventListener('arki_data_synced', handleRemoteSync)
+    return () => window.removeEventListener('arki_data_synced', handleRemoteSync)
   }, [loadCustomers])
 
   const addCustomer = useCallback(

@@ -14,7 +14,8 @@ const remote = { auth: {
   getSession: async () => ({ data: { session: signedIn ? { user: {} } : null } }),
   onAuthStateChange: callback => { authListeners.add(callback); return { data: { subscription: { unsubscribe: () => authListeners.delete(callback) } } } },
 }, rpc: async (_, { changes }) => { receivedChanges = changes; if (duringUpload) await duringUpload(); return { error: remoteError } } }
-const mocks = { 'services/supabase.ts': { isSupabaseConfigured: () => true, syncCloudChanges: async changes => { const { error } = await remote.rpc('sync_shop_records', { changes }); if (error) throw new Error(error.message) } } }
+let remotePullData = null
+const mocks = { 'services/supabase.ts': { isSupabaseConfigured: () => true, syncCloudChanges: async changes => { const { error } = await remote.rpc('sync_shop_records', { changes }); if (error) throw new Error(error.message) }, pullCloudRecords: async (since) => remotePullData } }
 function source(file) {
   file = path.resolve(file)
   if (cache.has(file)) return cache.get(file).exports
@@ -37,6 +38,7 @@ const memory = new Map()
 globalThis.window = {
   addEventListener(name, callback) { if (!networkListeners.has(name)) networkListeners.set(name, new Set()); networkListeners.get(name).add(callback) },
   removeEventListener(name, callback) { networkListeners.get(name)?.delete(callback) },
+  dispatchEvent(event) { return true },
 }
 Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true })
 globalThis.localStorage = { getItem: k => memory.get(k) ?? null, setItem: (k,v) => memory.set(k,String(v)), removeItem: k => memory.delete(k), clear: () => memory.clear() }
@@ -891,3 +893,89 @@ test('customer with opening balance initializes ledger and includes previous bal
   assert.equal(updatedCustomer.balance, 5500)
   validateBackup(await db.exportDatabase())
 })
+
+test('pull sync merges remote mobile records into local database without echoing into sync_queue', async () => {
+  const remoteCustomerId = 'mobile-cust-1'
+  const remoteSaleId = 'mobile-sale-1'
+
+  remotePullData = {
+    tables: {
+      business_settings: [],
+      customers: [{
+        id: remoteCustomerId,
+        name: 'Mobile App Customer',
+        mobile: '03111222333',
+        address: 'Lahore',
+        total_purchase: 1200,
+        total_paid: 1200,
+        balance: 0,
+        created_at: '2026-10-12T05:00:00Z',
+        updated_at: '2026-10-12T05:00:00Z',
+        sync_status: 'synced',
+      }],
+      items: [],
+      mazdoors: [],
+      sales: [{
+        id: remoteSaleId,
+        invoice_number: 'M-1001',
+        customer_id: remoteCustomerId,
+        customer_name: 'Mobile App Customer',
+        customer_mobile: '03111222333',
+        subtotal: 1200,
+        discount: 0,
+        total_mazdoori: 0,
+        total: 1200,
+        paid_amount: 1200,
+        remaining_credit: 0,
+        payment_method: 'cash',
+        notes: 'Created via mobile app',
+        created_at: '2026-10-12T05:00:00Z',
+        updated_at: '2026-10-12T05:00:00Z',
+        sync_status: 'synced',
+      }],
+      sale_items: [{
+        id: 'mobile-item-1',
+        sale_id: remoteSaleId,
+        item_id: null,
+        item_name: 'Laser Cutting',
+        quantity: 1,
+        rate: 1200,
+        mazdoori: 0,
+        amount: 1200,
+        created_at: '2026-10-12T05:00:00Z',
+      }],
+      sale_item_mazdoori_tasks: [],
+      payments: [{
+        id: 'mobile-pmt-1',
+        receipt_number: 'RCP-M1001',
+        customer_id: remoteCustomerId,
+        sale_id: remoteSaleId,
+        amount: 1200,
+        payment_method: 'cash',
+        payment_date: '2026-10-12T05:00:00Z',
+        notes: null,
+        created_at: '2026-10-12T05:00:00Z',
+        sync_status: 'synced',
+      }],
+      customer_ledger: [],
+      mazdoori_entries: [],
+      expenses: [],
+      sync_queue: [],
+    }
+  }
+
+  const merged = await syncService.pullRemoteChanges()
+  assert.ok(merged > 0)
+
+  // Verify records are accessible locally
+  const customers = await db.getCustomers()
+  assert.ok(customers.some(c => c.id === remoteCustomerId && c.name === 'Mobile App Customer'))
+
+  const sales = await db.getSales()
+  assert.ok(sales.some(s => s.id === remoteSaleId && s.invoiceNumber === 'M-1001'))
+
+  // Verify no echo loop: sync_queue must NOT contain pulled entities
+  const queue = await db.getSyncQueue()
+  assert.ok(!queue.some(q => q.entityId === remoteCustomerId || q.entityId === remoteSaleId))
+})
+

@@ -128,3 +128,33 @@ export async function exportCloudRecords(): Promise<unknown> {
   if (response?.ok) return await response.json()
   throw new Error('Cloud connection is unavailable.')
 }
+
+export async function pullCloudRecords(since?: string | null): Promise<unknown> {
+  const client = getClient()
+  if (client) {
+    try {
+      const { data, error } = await client.rpc('pull_shop_records', { since: since || null })
+      if (!error && data) return data
+    } catch {
+      // try export_shop_records fallback
+    }
+
+    try {
+      const { data, error } = await client.rpc('export_shop_records')
+      if (!error && data) return data
+    } catch {
+      // fallback to companion
+    }
+  }
+
+  const native = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+  const base = native ? 'http://127.0.0.1:5175' : ''
+  const response = await fetch(base + '/api/cloud/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(25000),
+  }).catch(() => null)
+
+  if (response?.ok) return await response.json()
+  return null
+}

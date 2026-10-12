@@ -62,6 +62,9 @@ export function ReportsPage() {
       }
     }
     loadData()
+    const handleRemoteSync = () => { void loadData() }
+    window.addEventListener('arki_data_synced', handleRemoteSync)
+    return () => window.removeEventListener('arki_data_synced', handleRemoteSync)
   }, [reloadKey])
 
   const inRange = (value: string) => {
