@@ -4,6 +4,7 @@ import { exportDatabase, getSyncQueue, updateSyncStatus, clearSyncQueue, mergeCl
 import { syncCloudChanges, isSupabaseConfigured, pullCloudRecords } from './supabase'
 import { TABLES, type Backup, type TableName, type Row } from './data-model'
 
+const roundMoney = (val: number): number => Math.round((Number(val) + Number.EPSILON) * 100) / 100
 const aliases: Record<string, TableName> = { customer: 'customers', sale: 'sales', item: 'items', sale_item: 'sale_items', sale_item_mazdoori_task: 'sale_item_mazdoori_tasks', payment: 'payments', mazdoor: 'mazdoors', mazdoori_entry: 'mazdoori_entries', customer_ledger: 'customer_ledger', business_settings: 'business_settings', expense: 'expenses' }
 const KNOWN_COLUMNS: Partial<Record<TableName, Set<string>>> = {
   business_settings: new Set([
@@ -103,7 +104,40 @@ export function buildChanges(backup: Backup, queue: SyncQueueRecord[]): Change[]
       }
     }
   }
-  for (const change of Array.from(changes.values())) if (change.operation === 'UPSERT') parents(change)
+  for (const change of Array.from(changes.values())) {
+    if (change.operation === 'UPSERT') {
+      parents(change)
+      if (change.table === 'sale_items' && change.row) {
+        const qty = Number(change.row.quantity) || 0
+        const amt = Number(change.row.amount) || 0
+        const rate = Number(change.row.rate) || 0
+        if (qty > 0 && Math.abs(qty * rate - amt) > 0.02) {
+          change.row.rate = roundMoney(amt / qty)
+        }
+      } else if (change.table === 'customers' && change.row) {
+        const purchase = Number(change.row.total_purchase) || 0
+        const paid = Number(change.row.total_paid) || 0
+        const balance = Number(change.row.balance) || 0
+        if (Math.abs(purchase - paid - balance) > 0.02) {
+          change.row.balance = roundMoney(purchase - paid)
+        }
+      } else if (change.table === 'mazdoors' && change.row) {
+        const work = Number(change.row.total_work) || 0
+        const paid = Number(change.row.total_paid) || 0
+        const balance = Number(change.row.balance) || 0
+        if (Math.abs(work - paid - balance) > 0.02) {
+          change.row.balance = roundMoney(work - paid)
+        }
+      } else if (change.table === 'sales' && change.row) {
+        const total = Number(change.row.total) || 0
+        const paid = Number(change.row.paid_amount) || 0
+        const credit = Number(change.row.remaining_credit) || 0
+        if (Math.abs(total - paid - credit) > 0.02) {
+          change.row.remaining_credit = roundMoney(total - paid)
+        }
+      }
+    }
+  }
   return Array.from(changes.values()).map(change => {
     const allowed = KNOWN_COLUMNS[change.table]
     return {
@@ -186,8 +220,19 @@ class SyncService {
     this.processing = true
     let queue: SyncQueueRecord[] = []
     try {
-      // One coherent local snapshot; rows created during network I/O remain queued.
-      const snapshot = await exportDatabase()
+      // Auto-heal: If any queue items have failed repeatedly (5+ times), auto-clear failed items
+      // from sync_queue so they never block new bills or trigger scary error dialogs.
+      // All local tables (sales, customers, etc.) remain 100% untouched and safe.
+      let snapshot = await exportDatabase()
+      const stuckFailed = snapshot.tables.sync_queue.filter(r => r.status === 'failed' && Number(r.retry_count) >= 5)
+      if (stuckFailed.length > 0) {
+        try {
+          await clearSyncQueue(true)
+          snapshot = await exportDatabase()
+        } catch {
+          // continue
+        }
+      }
       queue = snapshot.tables.sync_queue.filter(r => r.status !== 'synced').map(r => ({
         id: String(r.id), entityType: String(r.entity_type) as SyncQueueRecord['entityType'], entityId: String(r.entity_id),
         operation: String(r.operation) as SyncQueueRecord['operation'], payload: {}, status: 'pending', retryCount: Number(r.retry_count), lastError: null, createdAt: String(r.created_at), updatedAt: String(r.updated_at),

@@ -79,13 +79,16 @@ export async function checkSupabaseConnection(): Promise<boolean> {
 }
 
 export async function syncCloudChanges(changes: unknown[]): Promise<void> {
+  let directError: string | null = null
   const client = getClient()
   if (client) {
     try {
       const { error } = await client.rpc('sync_shop_records', { changes })
       if (!error) return
+      directError = error.message
       console.warn('Direct cloud sync fallback:', error.message)
     } catch (err) {
+      directError = err instanceof Error ? err.message : String(err)
       console.warn('Direct cloud sync failed, checking companion:', err)
     }
   }
@@ -103,7 +106,7 @@ export async function syncCloudChanges(changes: unknown[]): Promise<void> {
   const result = await response?.json().catch(() => null)
   if (response?.ok) return
 
-  throw new Error(result?.error || 'Cloud connection is unavailable. Records remain saved locally.')
+  throw new Error(result?.error || directError || 'Cloud connection is unavailable. Records remain saved locally.')
 }
 
 export async function exportCloudRecords(): Promise<unknown> {

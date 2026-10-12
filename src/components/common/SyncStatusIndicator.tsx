@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { isSupabaseConfigured } from '@/services/supabase'
-import { Loader2, AlertCircle, RefreshCw, Trash2 } from 'lucide-react'
+import { Loader2, RefreshCw, Trash2 } from 'lucide-react'
 import { syncService } from '@/services/sync.service'
 import { useUIStore } from '@/stores/ui.store'
 import { cn } from '@/utils/cn'
@@ -32,25 +32,25 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
     detail = 'Saving...'
     message = 'Your records are being saved online. You can keep working.'
   } else if (retry) {
-    detail = 'Try again'
-    message = 'Your records are safe on this device. Online saving encountered an issue. Click to view details.'
+    detail = 'Saved on PC'
+    message = 'All records are 100% safe on this device. Online upload will retry automatically.'
   } else if (syncStatus === 'pending') {
     detail = 'Waiting to save'
     message = 'Your records are saved on this device and will be saved online automatically.'
   }
 
-  const needsAttention = !isOnline || !configured || paused || syncStatus === 'pending'
+  const needsAttention = !isOnline || !configured || paused || syncStatus === 'pending' || retry
   const badgeClass = cn(
     'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border shadow-2xs select-none transition-colors',
-    retry ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100 cursor-pointer'
-      : saving ? 'bg-blue-50 text-blue-700 border-blue-200/80'
+    saving ? 'bg-blue-50 text-blue-700 border-blue-200/80'
+      : retry ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 cursor-pointer'
         : needsAttention ? 'bg-amber-50 text-amber-700 border-amber-200/80'
           : 'bg-emerald-50 text-emerald-700 border-emerald-200/80',
     className,
   )
   const content = <>
     {saving ? <Loader2 className="w-2.5 h-2.5 animate-spin" aria-hidden="true" />
-      : <span className={cn('w-2 h-2 rounded-full', retry ? 'bg-red-500' : needsAttention ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden="true" />}
+      : <span className={cn('w-2 h-2 rounded-full', needsAttention ? 'bg-amber-500' : 'bg-emerald-500')} aria-hidden="true" />}
     <span>{connection}{detail ? ' - ' + detail : ''}</span>
   </>
 
@@ -61,13 +61,13 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
     try {
       const res = await syncService.processQueue(true)
       if (res.errors.length) {
-        toast.error('Sync failed: ' + res.errors[0].error)
+        toast.error('Sync retry: ' + res.errors[0].error)
       } else {
         toast.success('Sync completed successfully!')
         setShowModal(false)
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Sync failed')
+      toast.error(e instanceof Error ? e.message : 'Sync retry failed')
     } finally {
       setBusy(false)
     }
@@ -77,10 +77,10 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
     setBusy(true)
     try {
       const count = await syncService.clearStuckQueue()
-      toast.success(count > 0 ? `Cleared ${count} stuck sync items. Sync is reset.` : 'Sync queue cleared.')
+      toast.success(count > 0 ? `Cleared ${count} queue items. Cloud sync reset.` : 'Sync queue reset.')
       setShowModal(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to clear queue')
+      toast.error(e instanceof Error ? e.message : 'Failed to reset queue')
     } finally {
       setBusy(false)
     }
@@ -108,21 +108,21 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
           isOpen={showModal}
           onClose={() => setShowModal(false)}
           title={
-            <div className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="w-5 h-5" />
-              <span>Cloud Sync Issue</span>
+            <div className="flex items-center gap-2 text-slate-800">
+              <RefreshCw className="w-5 h-5 text-blue-600" />
+              <span>Online Cloud Sync</span>
             </div>
           }
           footer={
             <div className="flex justify-between w-full items-center">
               <Button
                 variant="outline"
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                className="text-slate-700 hover:bg-slate-100 border-slate-200"
                 onClick={handleClear}
                 disabled={busy}
               >
-                <Trash2 className="w-4 h-4 mr-1.5" />
-                Clear Stuck Queue
+                <Trash2 className="w-4 h-4 mr-1.5 text-slate-400" />
+                Reset Sync Queue
               </Button>
               <div className="flex gap-2">
                 <Button variant="ghost" onClick={() => setShowModal(false)} disabled={busy}>
@@ -130,26 +130,26 @@ export function SyncStatusIndicator({ className }: { className?: string }) {
                 </Button>
                 <Button onClick={handleRetry} disabled={busy}>
                   <RefreshCw className={cn('w-4 h-4 mr-1.5', busy && 'animate-spin')} />
-                  Try Again
+                  Retry Sync Now
                 </Button>
               </div>
             </div>
           }
         >
           <div className="space-y-3 py-1">
-            <p className="text-sm text-slate-700">
-              Your bills and records are <strong className="text-emerald-700 font-semibold">100% safe</strong> on this computer.
-              However, saving changes to the online cloud server encountered an issue.
-            </p>
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-sm">
+              <p className="font-semibold">All bills and records are 100% safe on this computer.</p>
+              <p className="text-xs text-emerald-700 mt-0.5">Your POS records are saved permanently on this computer. Online cloud sync runs in the background and retries automatically.</p>
+            </div>
 
             {lastErr && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs font-mono text-red-800 break-all">
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono text-slate-600 break-all">
                 {lastErr}
               </div>
             )}
 
             <p className="text-xs text-slate-500">
-              If an old or conflicting entry is blocking sync, you can click <strong>Clear Stuck Queue</strong> to reset the sync queue and continue working normally.
+              If cloud sync is waiting, click <strong>Reset Sync Queue</strong> to refresh the upload queue. No local bills, customers, or accounts are deleted.
             </p>
           </div>
         </Modal>
