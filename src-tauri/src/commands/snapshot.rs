@@ -93,6 +93,109 @@ pub fn restore_database(backup: Value, app: tauri::AppHandle, state: State<DbSta
     Ok(true)
 }
 
+#[tauri::command]
+pub fn merge_cloud_records(payload: Value, state: State<DbState>) -> Result<usize, String> {
+    let tables = payload.get("tables").and_then(Value::as_object).ok_or("Missing tables in payload")?;
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let mut total_merged = 0;
+    let mut touched_ids: Vec<String> = Vec::new();
+
+    let ordered_tables = [
+        "business_settings",
+        "customers",
+        "items",
+        "mazdoors",
+        "sales",
+        "sale_items",
+        "sale_item_mazdoori_tasks",
+        "payments",
+        "customer_ledger",
+        "mazdoori_entries",
+        "expenses",
+    ];
+
+    for table in ordered_tables {
+        let Some(records) = tables.get(table).and_then(Value::as_array) else { continue };
+        if records.is_empty() { continue; }
+
+        let mut stmt = tx.prepare(&format!("PRAGMA table_info({})", table)).map_err(|e| e.to_string())?;
+        let columns: Vec<String> = stmt.query_map([], |r| r.get(1)).map_err(|e| e.to_string())?.collect::<rusqlite::Result<_>>().map_err(|e| e.to_string())?;
+        drop(stmt);
+
+        for value in records {
+            let Some(row) = value.as_object() else { continue };
+            let Some(id) = row.get("id").and_then(Value::as_str) else { continue };
+            if id.is_empty() { continue; }
+
+            let mut fields = Vec::new();
+            let mut values = Vec::new();
+            let mut updates = Vec::new();
+
+            for (key, val) in row {
+                if !columns.contains(key) { continue; }
+                if table == "business_settings" && (key == "default_printer" || (key == "logo_path" && val.is_null())) {
+                    continue;
+                }
+                fields.push(key.clone());
+                if key != "id" {
+                    if table == "business_settings" && key == "next_invoice_number" {
+                        updates.push("next_invoice_number=MAX(business_settings.next_invoice_number, excluded.next_invoice_number)".to_string());
+                    } else {
+                        updates.push(format!("{}=excluded.{}", key, key));
+                    }
+                }
+                values.push(match val {
+                    Value::Null => SqlValue::Null,
+                    Value::Bool(b) => SqlValue::Integer(i64::from(*b)),
+                    Value::Number(n) => match n.as_i64() {
+                        Some(i) => SqlValue::Integer(i),
+                        None => match n.as_f64().filter(|num| num.is_finite()) {
+                            Some(f) => SqlValue::Real(f),
+                            None => SqlValue::Null,
+                        },
+                    },
+                    Value::String(s) => SqlValue::Text(s.clone()),
+                    _ => SqlValue::Null,
+                });
+            }
+
+            if fields.is_empty() { continue; }
+
+            let on_conflict = if updates.is_empty() {
+                "DO NOTHING".to_string()
+            } else {
+                format!("DO UPDATE SET {}", updates.join(","))
+            };
+
+            let sql = format!(
+                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(id) {}",
+                table,
+                fields.join(","),
+                vec!["?"; fields.len()].join(","),
+                on_conflict
+            );
+
+            tx.execute(&sql, params_from_iter(values))
+                .map_err(|e| format!("Failed to merge into {}: {}", table, e))?;
+
+            touched_ids.push(id.to_string());
+            total_merged += 1;
+        }
+    }
+
+    // Clean up sync_queue for touched IDs to prevent echo loop
+    for chunk in touched_ids.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("DELETE FROM sync_queue WHERE entity_id IN ({})", placeholders);
+        let params: Vec<SqlValue> = chunk.iter().map(|id| SqlValue::Text(id.clone())).collect();
+        tx.execute(&sql, params_from_iter(params)).map_err(|e| e.to_string())?;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(total_merged)
+}
+
 pub fn install_sync_triggers(conn: &mut Connection) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     let initialized: i64 = tx.query_row("SELECT COUNT(*) FROM schema_migrations WHERE version=2", [], |r| r.get(0))?;

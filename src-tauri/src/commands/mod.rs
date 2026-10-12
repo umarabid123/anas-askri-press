@@ -2,6 +2,6 @@ pub mod database;
 
 pub use database::*;
 pub mod snapshot;
-pub use snapshot::{export_database, restore_database};
+pub use snapshot::{export_database, restore_database, merge_cloud_records};
 pub mod files;
 pub use files::*;
