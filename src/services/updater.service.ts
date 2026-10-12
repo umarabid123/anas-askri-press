@@ -18,7 +18,7 @@ export interface UpdateDownloadProgress {
   isInstalling: boolean
 }
 
-export const APP_VERSION = '1.0.1'
+export const APP_VERSION = '1.0.2'
 
 // Keep active update reference in memory
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
