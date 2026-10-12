@@ -138,13 +138,13 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
             <section className="invoice-customer">
               <h3><UserRound aria-hidden="true" />Customer Details</h3>
               <dl>
-                <div><dt>Name</dt><dd>{customerName || 'Cash Customer'}</dd></div>
-                <div><dt>Address</dt><dd>{customerAddress || ' '}</dd></div>
-                <div><dt>Phone</dt><dd>{customerPhone || ' '}</dd></div>
+                <div><dt>Name</dt><dd className="invoice-customer-name">{customerName || 'Cash Customer'}</dd></div>
+                <div><dt>Address</dt><dd className="invoice-customer-address">{customerAddress || ' '}</dd></div>
+                <div><dt>Phone</dt><dd className="invoice-customer-phone">{customerPhone || ' '}</dd></div>
               </dl>
             </section>
             <dl className="invoice-meta">
-              <div><dt><FileText aria-hidden="true" />Invoice No</dt><dd>{data.invoiceNumber}</dd></div>
+              <div><dt><FileText aria-hidden="true" />Invoice No</dt><dd className="invoice-meta-num">{data.invoiceNumber}</dd></div>
               <div><dt><CalendarDays aria-hidden="true" />Date</dt><dd>{formattedDate}</dd></div>
               <div><dt><CreditCard aria-hidden="true" />Payment Type</dt><dd>{data.paymentMethod === 'bank' ? 'Bank' : 'Cash'}</dd></div>
             </dl>
@@ -155,10 +155,14 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
               <thead><tr><th scope="col">Sr.</th><th scope="col">Description</th><th scope="col">Qty/Kg</th><th scope="col">Rate (Rs.)</th><th scope="col">Amount (Rs.)</th></tr></thead>
               <tbody>
                 {filledItems.map((item, index) => <tr key={item.id || index}>
-                  <td>{index + 1}</td><td dir="auto">{item.itemName}</td><td>{money(item.quantity)}{item.unit?.toLowerCase() === 'qty' ? ' Qty' : ' kg'}</td><td>{money(item.rate)}</td><td>{money(item.amount)}</td>
+                  <td className="invoice-td-sr">{index + 1}</td>
+                  <td className="invoice-td-desc" dir="auto">{item.itemName}</td>
+                  <td className="invoice-td-qty">{money(item.quantity)}{item.unit?.toLowerCase() === 'qty' ? ' Qty' : ' kg'}</td>
+                  <td className="invoice-td-rate">{money(item.rate)}</td>
+                  <td className="invoice-td-amount">{money(item.amount)}</td>
                 </tr>)}
                 {Array.from({ length: emptyRowsCount }, (_, i) => <tr key={`empty-${i}`} className="invoice-empty-row" aria-hidden="true">
-                  <td>{filledItems.length + i + 1}</td><td /><td /><td /><td />
+                  <td className="invoice-td-sr">{filledItems.length + i + 1}</td><td /><td /><td /><td />
                 </tr>)}
               </tbody>
             </table>
