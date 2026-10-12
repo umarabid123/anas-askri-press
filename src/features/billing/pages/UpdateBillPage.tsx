@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { ROUTES } from '@/constants/routes'
-import { getSales, getCustomers, receivePayment, deleteSale } from '@/services/sqlite.service'
+import { getSales, getCustomers, receiveBillPayment, deleteSale } from '@/services/sqlite.service'
 import { formatPKR, formatDate, localDateKey } from '@/utils/financial'
 import { useCartStore } from '@/stores/cart.store'
 import { toast } from '@/stores/toast.store'
@@ -753,10 +753,11 @@ export function UpdateBillPage() {
           setPaymentCustomer(null)
         }}
         onSubmit={async (payment) => {
-          const receiptId = await receivePayment({
-            ...payment,
-            saleId: paymentSale?.id,
-          })
+          if (!paymentSale) throw new Error('Bill not found.')
+          const receiptId = await receiveBillPayment(
+            { ...payment, saleId: paymentSale.id },
+            { invoiceNumber: paymentSale.invoiceNumber, remainingCredit: paymentSale.remainingCredit || 0 },
+          )
           toast.success(`Payment of ${formatPKR(payment.amount)} received for Bill #${paymentSale?.invoiceNumber}!`)
           setPaymentModalOpen(false)
           setPaymentSale(null)

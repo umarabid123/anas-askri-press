@@ -14,8 +14,8 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { ShopInvoiceTemplate, type ShopInvoiceData } from './ShopInvoiceTemplate'
 import { CancelInvoiceDialog } from './CancelInvoiceDialog'
 import { ReceivePaymentModal } from '@/features/customers/components/ReceivePaymentModal'
-import { getBusinessSettings, getSales, getCustomerById, getCustomerLedger, receivePayment, deleteSale } from '@/services/sqlite.service'
-import { previousInvoiceBalance } from '../invoice-data'
+import { getBusinessSettings, getSales, getCustomerById, getCustomerLedger, receiveBillPayment, deleteSale } from '@/services/sqlite.service'
+import { invoiceOldUdharPaid, previousInvoiceBalance } from '../invoice-data'
 import type { BusinessSettings, Customer } from '@/types'
 
 interface BillPreviewModalProps {
@@ -52,9 +52,10 @@ export function BillPreviewModal({
   const [isOpeningEdit, setIsOpeningEdit] = useState(false)
   const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false)
   const [receivePaymentCustomer, setReceivePaymentCustomer] = useState<Customer | null>(null)
-  const [accountSnapshot, setAccountSnapshot] = useState<{ data: ShopInvoiceData; previousBalance: number } | null>(null)
+  const [accountSnapshot, setAccountSnapshot] = useState<{ data: ShopInvoiceData; previousBalance: number; oldUdharPaid: number } | null>(null)
   const accountReady = !!data && (data.previousBalance !== undefined || (!data.customerId && !data.customer?.id) || accountSnapshot?.data === data)
-  const invoiceData = data ? { ...data, previousBalance: data.previousBalance ?? (accountSnapshot?.data === data ? accountSnapshot.previousBalance : 0) } : null
+  const snapshot = accountSnapshot?.data === data ? accountSnapshot : null
+  const invoiceData = data ? { ...data, previousBalance: data.previousBalance ?? snapshot?.previousBalance ?? 0, oldUdharPaid: data.oldUdharPaid ?? snapshot?.oldUdharPaid ?? 0 } : null
 
   const hasAutoShared = useRef(false)
   useEffect(() => {
@@ -77,7 +78,7 @@ export function BillPreviewModal({
     if (!customerId) return
     let cancelled = false
     getCustomerLedger(customerId).then(ledger => {
-      if (!cancelled) setAccountSnapshot({ data, previousBalance: previousInvoiceBalance(data, ledger) })
+      if (!cancelled) setAccountSnapshot({ data, previousBalance: previousInvoiceBalance(data, ledger), oldUdharPaid: invoiceOldUdharPaid(data, ledger) })
     }).catch(err => { if (!cancelled) setExportError(err instanceof Error ? err.message : String(err)) })
     return () => { cancelled = true }
   }, [isOpen, data])
@@ -453,10 +454,10 @@ export function BillPreviewModal({
           setReceivePaymentCustomer(null)
         }}
         onSubmit={async (payment) => {
-          const receiptId = await receivePayment({
-            ...payment,
-            saleId: data.saleId || null,
-          })
+          const receiptId = await receiveBillPayment(
+            { ...payment, saleId: data.saleId || '' },
+            { invoiceNumber: data.invoiceNumber, remainingCredit: data.remainingCredit || 0 },
+          )
           toast.success(`Payment of Rs ${payment.amount.toLocaleString()} received for Bill #${data.invoiceNumber}!`)
           setIsReceivePaymentOpen(false)
           setReceivePaymentCustomer(null)

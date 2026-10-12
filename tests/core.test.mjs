@@ -171,6 +171,41 @@ test('payment corrections preserve later receipts and adjust later running balan
   validateBackup(await db.exportDatabase())
 })
 
+test('payment above a bill clears older udhar as a separate receipt and the invoice counts it as paid', async () => {
+  const { saleToInvoiceData, previousInvoiceBalance, invoiceOldUdharPaid, invoiceAccountTotals } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
+  const { oldUdharNote } = source(path.join(root, 'src/utils/billing.ts'))
+  const c = await customer()
+  await bill(c.id, { paidAmount: 0, items: [line({ quantity: 1, rate: 400000, mazdoori: 0, mazdooriTasks: [] })] })
+  // New bill of 40,000 with 50,000 received: the bill is paid in full, 10,000 goes to the old udhar
+  await bill(c.id, { paidAmount: 40000, items: [line({ quantity: 2000, rate: 20, mazdoori: 400, mazdooriTasks: [] })] })
+  const current = (await db.getSales()).find(s => s.total === 40000)
+  await db.receivePayment({ customerId: c.id, amount: 10000, paymentMethod: 'cash', notes: oldUdharNote(current.invoiceNumber) })
+  assert.equal(current.paidAmount, 40000); assert.equal(current.remainingCredit, 0)
+  assert.equal((await db.getCustomerById(c.id)).balance, 390000)
+  const invoice = saleToInvoiceData(current, await db.getCustomerById(c.id))
+  const ledger = await db.getCustomerLedger(c.id)
+  invoice.previousBalance = previousInvoiceBalance(invoice, ledger)
+  invoice.oldUdharPaid = invoiceOldUdharPaid(invoice, ledger)
+  assert.deepEqual(invoiceAccountTotals(invoice), { previousBalance: 400000, total: 440000, paid: 50000, balance: 390000, advance: 0 })
+
+  // Receive Payment on a bill: above its unpaid amount goes to older udhar, but never above what is owed
+  await bill(c.id, { paidAmount: 0, items: [line({ quantity: 1, rate: 1000, mazdoori: 0, mazdooriTasks: [] })] })
+  const unpaid = (await db.getSales()).find(s => s.total === 1000)
+  const beforeRefused = (await db.exportDatabase()).tables
+  await assert.rejects(() => db.receiveBillPayment({ customerId: c.id, saleId: unpaid.id, amount: 391001, paymentMethod: 'cash' }, unpaid), /old udhar/)
+  assert.deepEqual((await db.exportDatabase()).tables, beforeRefused)
+  await db.receiveBillPayment({ customerId: c.id, saleId: unpaid.id, amount: 3000, paymentMethod: 'bank', notes: 'Payment for Bill #' + unpaid.invoiceNumber }, unpaid)
+  const settled = (await db.getSales()).find(s => s.id === unpaid.id)
+  assert.equal(settled.paidAmount, 1000); assert.equal(settled.remainingCredit, 0)
+  assert.equal((await db.getCustomerById(c.id)).balance, 388000)
+  const receipts = (await db.getPayments()).filter(r => r.paymentMethod === 'bank')
+  assert.deepEqual(receipts.map(r => [r.saleId || null, r.amount]), [[unpaid.id, 1000], [null, 2000]])
+  assert.equal(invoiceOldUdharPaid(unpaid, await db.getCustomerLedger(c.id)), 2000)
+  // Another invoice's old udhar receipt is not counted on this one
+  assert.equal(invoiceOldUdharPaid({ invoiceNumber: unpaid.invoiceNumber.slice(0, -1) }, await db.getCustomerLedger(c.id)), 0)
+  validateBackup(await db.exportDatabase())
+})
+
 test('invoice includes previous dues once and retains its account snapshot after later bills and payments', async () => {
   const { saleToInvoiceData, previousInvoiceBalance, invoiceAccountTotals } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
   const c = await customer()
@@ -180,7 +215,7 @@ test('invoice includes previous dues once and retains its account snapshot after
   const invoice = saleToInvoiceData(current, await db.getCustomerById(c.id))
   const beforePreview = (await db.exportDatabase()).tables
   invoice.previousBalance = previousInvoiceBalance(invoice, await db.getCustomerLedger(c.id))
-  assert.deepEqual(invoiceAccountTotals(invoice), { previousBalance: 5000, total: 7000, balance: 6500, advance: 0 })
+  assert.deepEqual(invoiceAccountTotals(invoice), { previousBalance: 5000, total: 7000, paid: 500, balance: 6500, advance: 0 })
   assert.equal(invoice.total, 2000); assert.equal(current.remainingCredit, 1500)
   assert.equal((await db.getCustomerById(c.id)).balance, 6500)
   assert.deepEqual((await db.exportDatabase()).tables, beforePreview)
@@ -198,9 +233,9 @@ test('invoice includes previous dues once and retains its account snapshot after
 
 test('invoice account totals handle walk-ins, discounts, advance balances and exact legacy ledger matches', () => {
   const { previousInvoiceBalance, invoiceAccountTotals } = source(path.join(root, 'src/features/billing/invoice-data.ts'))
-  assert.deepEqual(invoiceAccountTotals({ total: 2000, paidAmount: 2000 }), { previousBalance: 0, total: 2000, balance: 0, advance: 0 })
+  assert.deepEqual(invoiceAccountTotals({ total: 2000, paidAmount: 2000 }), { previousBalance: 0, total: 2000, paid: 2000, balance: 0, advance: 0 })
   assert.equal(invoiceAccountTotals({ total: 1950, previousBalance: 5000, paidAmount: 500 }).total, 6950)
-  assert.deepEqual(invoiceAccountTotals({ total: 2000, previousBalance: -3000, paidAmount: 0 }), { previousBalance: -3000, total: 0, balance: 0, advance: 1000 })
+  assert.deepEqual(invoiceAccountTotals({ total: 2000, previousBalance: -3000, paidAmount: 0 }), { previousBalance: -3000, total: 0, paid: 0, balance: 0, advance: 1000 })
   assert.equal(previousInvoiceBalance({ invoiceNumber: 'ARKI-1001' }, [{ description: 'Invoice #ARKI-10010', balance: 9999, debit: 100, credit: 0 }, { description: 'Invoice #ARKI-1001', balance: 6800, debit: 2000, credit: 200 }]), 5000)
   assert.throws(() => previousInvoiceBalance({ invoiceNumber: 'missing' }, []), /customer account/)
 })

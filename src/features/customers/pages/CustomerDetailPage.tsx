@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   DollarSign,
   Edit,
+  Eye,
   FilePlus,
   Printer,
   Search,
@@ -26,7 +27,7 @@ import { startNewBill } from '@/features/billing/bill-actions'
 import { toast } from '@/stores/toast.store'
 import { ROUTES } from '@/constants/routes'
 import { EditCustomerModal } from '../components/EditCustomerModal'
-import { ReceivePaymentModal } from '../components/ReceivePaymentModal'
+import { ReceivePaymentModal, type ReceivePaymentBillInfo } from '../components/ReceivePaymentModal'
 import { CustomerStatementModal } from '../components/CustomerStatementModal'
 import { BillPreviewModal } from '@/features/billing/components/BillPreviewModal'
 import type { ShopInvoiceData } from '@/features/billing/components/ShopInvoiceTemplate'
@@ -48,6 +49,7 @@ export function CustomerDetailPage() {
   // Modals state
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isPaymentOpen, setIsPaymentOpen] = useState(false)
+  const [payingBill, setPayingBill] = useState<ReceivePaymentBillInfo | null>(null)
   const [isStatementOpen, setIsStatementOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<ShopInvoiceData | null>(null)
 
@@ -87,6 +89,7 @@ export function CustomerDetailPage() {
 
   const handleReceivePayment = async (data: {
     customerId: string
+    saleId?: string
     amount: number
     paymentMethod: string
     notes?: string
@@ -94,6 +97,16 @@ export function CustomerDetailPage() {
     const paymentId = await receivePayment(data)
     await loadData()
     return paymentId
+  }
+
+  const handleOpenReceiveForSale = (sale: Sale) => {
+    setPayingBill({
+      saleId: sale.id,
+      invoiceNumber: sale.invoiceNumber,
+      total: sale.total,
+      remainingCredit: sale.remainingCredit || 0,
+    })
+    setIsPaymentOpen(true)
   }
 
   // Open an invoice (from a ledger row or the invoices tab) in the bill preview popup
@@ -287,7 +300,10 @@ export function CustomerDetailPage() {
             </div>
             <Button
               type="button"
-              onClick={() => setIsPaymentOpen(true)}
+              onClick={() => {
+                setPayingBill(null)
+                setIsPaymentOpen(true)
+              }}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 px-3.5 flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
             >
               <DollarSign className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -299,7 +315,7 @@ export function CustomerDetailPage() {
         {/* Ledger Table */}
         {activeTab === 'ledger' ? (
         <div className="border border-slate-200 rounded-lg overflow-x-auto flex-1">
-          <table className="w-full min-w-[760px] text-left text-sm border-collapse">
+          <table className="w-full min-w-[860px] text-left text-sm border-collapse">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
@@ -310,12 +326,13 @@ export function CustomerDetailPage() {
                 <th className="py-2.5 px-4 text-right">Credit (-)</th>
                 <th className="py-2.5 px-4 text-right">Running Balance</th>
                 <th className="py-2.5 px-4 text-center w-36">Entry Status</th>
+                <th className="py-2.5 px-4 text-center w-28">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredLedger.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     <p className="font-semibold text-sm">No transaction records found</p>
                     <p className="text-xs mt-1">Transactions will appear automatically when bills or payments are saved.</p>
                   </td>
@@ -325,6 +342,8 @@ export function CustomerDetailPage() {
                   const saleId = entry.saleId
                   const status = ledgerEntryStatus(entry, sales)
                   const { cleanDescription, receivedBy } = parseLedgerDetails(entry.description)
+                  const matchingSale = saleId ? sales.find((s) => s.id === saleId) : null
+
                   return (
                   <tr
                     key={entry.id}
@@ -364,6 +383,29 @@ export function CustomerDetailPage() {
                         {status.label}
                       </Badge>
                     </td>
+                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (matchingSale && (matchingSale.remainingCredit || 0) > 0 && !matchingSale.cancelledAt) {
+                            handleOpenReceiveForSale(matchingSale)
+                          } else {
+                            setPayingBill(null)
+                            setIsPaymentOpen(true)
+                          }
+                        }}
+                        className="h-7 px-2.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-2xs cursor-pointer transition-colors mx-auto"
+                        title={
+                          matchingSale && (matchingSale.remainingCredit || 0) > 0
+                            ? `Receive payment for ${matchingSale.invoiceNumber}`
+                            : `Receive payment from ${customer?.name || 'customer'}`
+                        }
+                      >
+                        <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
+                        <span>Receive</span>
+                      </button>
+                    </td>
                   </tr>
                   )
                 })
@@ -374,7 +416,7 @@ export function CustomerDetailPage() {
         ) : (
         /* Invoices Table */
         <div className="border border-slate-200 rounded-lg overflow-x-auto flex-1">
-          <table className="w-full min-w-[760px] text-left text-sm border-collapse">
+          <table className="w-full min-w-[860px] text-left text-sm border-collapse">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
@@ -384,18 +426,20 @@ export function CustomerDetailPage() {
                 <th className="py-2.5 px-4 text-right">Paid</th>
                 <th className="py-2.5 px-4 text-right">Balance</th>
                 <th className="py-2.5 px-4 text-center w-36">Bill Status</th>
+                <th className="py-2.5 px-4 text-center w-36">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredSales.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <p className="font-semibold text-sm">No invoices found</p>
                     <p className="text-xs mt-1">Bills saved for this customer appear here.</p>
                   </td>
                 </tr>
               ) : (
-                filteredSales.map((sale, index) => (
+                filteredSales.map((sale, index) => {
+                  return (
                   <tr
                     key={sale.id}
                     className={cn('hover:bg-slate-50/50 cursor-pointer', sale.cancelledAt && 'opacity-60')}
@@ -411,8 +455,41 @@ export function CustomerDetailPage() {
                     <td className="py-3 px-4 text-center">
                       <Badge variant={billStatus(sale).variant} title={billStatus(sale).detail} className="whitespace-nowrap">{billStatus(sale).label}</Badge>
                     </td>
+                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                      <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if ((sale.remainingCredit || 0) > 0 && !sale.cancelledAt) {
+                              handleOpenReceiveForSale(sale)
+                            } else {
+                              setPayingBill(null)
+                              setIsPaymentOpen(true)
+                            }
+                          }}
+                          className="h-7 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs"
+                          title={
+                            (sale.remainingCredit || 0) > 0
+                              ? `Receive payment for ${sale.invoiceNumber}`
+                              : `Receive payment from ${customer?.name || 'customer'}`
+                          }
+                        >
+                          <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
+                          <span>Receive</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleViewInvoice(sale.id)}
+                          className="h-7 px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          title="View invoice"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>View</span>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                ))
+                )})
               )}
             </tbody>
           </table>
@@ -431,7 +508,11 @@ export function CustomerDetailPage() {
       <ReceivePaymentModal
         isOpen={isPaymentOpen}
         customer={customer}
-        onClose={() => setIsPaymentOpen(false)}
+        billInfo={payingBill}
+        onClose={() => {
+          setIsPaymentOpen(false)
+          setPayingBill(null)
+        }}
         onSubmit={handleReceivePayment}
       />
 

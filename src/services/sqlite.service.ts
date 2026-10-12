@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import type { BusinessSettings, Customer, CustomerLedgerEntry, Expense, Item, ItemFormData, Mazdoor, MazdooriEntry, Sale, SaleItem } from '@/types'
 import { customerSchema, type CustomerFormData } from '@/schemas'
 import type { SyncQueueRecord } from '@/types/database'
-import { prepareBill } from '@/utils/billing'
+import { oldUdharNote, prepareBill } from '@/utils/billing'
 import { isValidDateKey, localDateKey, roundMoney } from '@/utils/financial'
 import { useUIStore } from '@/stores/ui.store'
 import { useBusinessSettingsStore } from '@/stores/business-settings.store'
@@ -267,6 +267,28 @@ export async function receivePayment(payment: ReceivePaymentInput): Promise<stri
     }
     return receipt.id
   })
+}
+// Money above the bill's unpaid amount clears the customer's older udhar as a separate receipt
+export async function receiveBillPayment(payment: ReceivePaymentInput & { saleId: string }, bill: { invoiceNumber: string; remainingCredit: number }): Promise<string> {
+  const amount = roundMoney(payment.amount)
+  const toBill = roundMoney(Math.min(amount, Math.max(0, bill.remainingCredit)))
+  const toOldUdhar = roundMoney(amount - toBill)
+  if (toOldUdhar > 0) {
+    // Checked up front so the bill part is not saved when the old udhar part would be refused
+    const customer = payment.customerId ? await getCustomerById(payment.customerId) : null
+    if (!customer) throw new Error('Payment cannot exceed bill remaining credit.')
+    const oldUdhar = roundMoney(customer.balance - toBill)
+    if (toOldUdhar > oldUdhar + 0.01) throw new Error(`Payment cannot exceed bill remaining credit plus old udhar (Rs ${roundMoney(toBill + Math.max(0, oldUdhar)).toLocaleString()}).`)
+  }
+  const billReceiptId = toBill > 0 ? await receivePayment({ ...payment, amount: toBill }) : null
+  if (toOldUdhar <= 0) return billReceiptId!
+  const oldUdharReceiptId = await receivePayment({
+    customerId: payment.customerId,
+    amount: toOldUdhar,
+    paymentMethod: payment.paymentMethod,
+    notes: [payment.notes, oldUdharNote(bill.invoiceNumber)].filter(Boolean).join(' - '),
+  })
+  return billReceiptId || oldUdharReceiptId
 }
 export async function createSale(input: CreateSaleInput): Promise<string> {
   const bill = prepareBill(input.items, input.discount, input.paidAmount)

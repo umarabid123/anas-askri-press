@@ -12,6 +12,20 @@ export function billStatus(sale: Sale): EntryStatus {
       ? { label: 'Old Bill', variant: 'default', detail: sale.cancelReason }
       : { label: 'Cancelled', variant: 'danger', detail: 'This bill was cancelled and no longer counts towards customer dues.' }
   }
+  if ((sale.remainingCredit || 0) <= 0 && sale.total > 0) {
+    return {
+      label: 'Received',
+      variant: 'success',
+      detail: 'This bill is fully received / paid.',
+    }
+  }
+  if ((sale.paidAmount || 0) > 0 && (sale.remainingCredit || 0) > 0) {
+    return {
+      label: 'Partial Received',
+      variant: 'warning',
+      detail: `Rs ${(sale.paidAmount || 0).toLocaleString()} received, Rs ${(sale.remainingCredit || 0).toLocaleString()} remaining.`,
+    }
+  }
   return sale.notes?.startsWith('Updated from bill #')
     ? { label: 'Updated Bill', variant: 'primary', detail: 'This is the corrected bill. The old copy stays in history.' }
     : { label: 'Bill Added', variant: 'primary', detail: 'This bill counts towards the customer account. Payments appear separately below.' }
@@ -36,6 +50,9 @@ export function ledgerEntryStatus(entry: CustomerLedgerEntry, sales: Sale[]): En
   }
   if (/^Opening Balance/i.test(entry.description) && entry.debit > 0 && entry.credit === 0) {
     return { label: 'Opening Balance', variant: 'warning', detail: 'Previous udhar balance carried forward when customer was registered.' }
+  }
+  if (entry.description.startsWith('Invoice #') && entry.credit > 0 && entry.credit >= entry.debit) {
+    return { label: 'Received', variant: 'success', detail: 'This bill was fully received / paid.' }
   }
   return { label: entry.debit > 0 ? 'Amount Added' : entry.credit > 0 ? 'Amount Reduced' : 'Record Added', variant: 'default', detail: 'An account entry. See the description for details.' }
 }

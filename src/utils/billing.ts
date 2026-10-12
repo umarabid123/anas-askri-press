@@ -45,3 +45,8 @@ export function prepareBill(items: SaleItem[], discount: number, paidAmount: num
   if (roundMoney(paidAmount) > total) throw new Error('Payment received cannot be more than the bill total.')
   return { items: normalized, subtotal, totalMazdoori, discount: roundMoney(discount), total, paidAmount: roundMoney(paidAmount), remainingCredit: calculateCredit(total, paidAmount) }
 }
+
+// Note on the receipt that clears older udhar with money received on a bill; the invoice finds it by this text
+export function oldUdharNote(invoiceNumber: string): string {
+  return `Old udhar received with Invoice #${invoiceNumber}`
+}

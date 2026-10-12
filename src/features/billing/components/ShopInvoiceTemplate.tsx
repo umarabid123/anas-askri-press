@@ -20,6 +20,8 @@ export interface ShopInvoiceData {
   remainingCredit: number
   customerId?: string | null
   previousBalance?: number
+  // Old udhar paid along with this bill, shown as part of the paid amount
+  oldUdharPaid?: number
   paymentMethod: string
   // Set when showing a saved invoice, so it can be cancelled
   saleId?: string
@@ -89,7 +91,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
           ['Sub Total', data.total],
           ...(account.previousBalance ? [[account.previousBalance > 0 ? 'Previous Dues' : 'Previous Advance', account.previousBalance] as [string, number]] : []),
           ['TOTAL', account.total],
-          ['Paid', data.paidAmount],
+          ['Paid', account.paid],
           ['Balance', account.balance],
           ...(account.advance > 0 ? [['Advance Remaining', account.advance] as [string, number]] : []),
         ] as [string, number][]).map(([label, amount]) => <div key={label} className="flex justify-between gap-2"><span>{label}</span><b>{Number(amount).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</b></div>)}
@@ -253,7 +255,7 @@ export const ShopInvoiceTemplate = React.forwardRef<HTMLDivElement, ShopInvoiceT
                 <span className="invoice-total-label">
                   Paid Amount <span className="invoice-ur-text" dir="rtl">(ادا شدہ رقم)</span>
                 </span>
-                <strong className="invoice-val-paid"><small>Rs.</small> {money(data.paidAmount)}</strong>
+                <strong className="invoice-val-paid"><small>Rs.</small> {money(account.paid)}</strong>
               </div>
               <div className={`invoice-total-row ${account.advance > 0 ? 'invoice-advance-row' : 'invoice-balance-row'}`}>
                 <span className="invoice-total-label">

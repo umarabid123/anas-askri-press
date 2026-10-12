@@ -1,6 +1,7 @@
 import type { Customer, CustomerLedgerEntry, Sale } from '@/types'
 import type { ShopInvoiceData } from './components/ShopInvoiceTemplate'
 import { roundMoney } from '@/utils/financial'
+import { oldUdharNote } from '@/utils/billing'
 
 export function previousInvoiceBalance(data: Pick<ShopInvoiceData, 'saleId' | 'invoiceNumber'>, ledger: readonly CustomerLedgerEntry[]): number {
   const entry = ledger.find(row => row.description === `Invoice #${data.invoiceNumber}` && (!row.saleId || !data.saleId || row.saleId === data.saleId))
@@ -8,11 +9,18 @@ export function previousInvoiceBalance(data: Pick<ShopInvoiceData, 'saleId' | 'i
   return roundMoney(entry.balance - entry.debit + entry.credit)
 }
 
-export function invoiceAccountTotals(data: Pick<ShopInvoiceData, 'total' | 'paidAmount' | 'previousBalance'>) {
+// Old udhar cleared with money received on this bill (kept as separate receipts, not on the bill itself)
+export function invoiceOldUdharPaid(data: Pick<ShopInvoiceData, 'invoiceNumber'>, ledger: readonly CustomerLedgerEntry[]): number {
+  const note = oldUdharNote(data.invoiceNumber)
+  return roundMoney(ledger.filter(row => row.description.endsWith(note)).reduce((sum, row) => sum + row.credit - row.debit, 0))
+}
+
+export function invoiceAccountTotals(data: Pick<ShopInvoiceData, 'total' | 'paidAmount' | 'previousBalance' | 'oldUdharPaid'>) {
   const previousBalance = data.previousBalance ?? 0
   const total = roundMoney(data.total + previousBalance)
-  const balance = roundMoney(total - data.paidAmount)
-  return { previousBalance, total: Math.max(0, total), balance: Math.max(0, balance), advance: Math.max(0, -balance) }
+  const paid = roundMoney(data.paidAmount + (data.oldUdharPaid ?? 0))
+  const balance = roundMoney(total - paid)
+  return { previousBalance, total: Math.max(0, total), paid, balance: Math.max(0, balance), advance: Math.max(0, -balance) }
 }
 
 // Preview data for a saved invoice; the customer record adds the address

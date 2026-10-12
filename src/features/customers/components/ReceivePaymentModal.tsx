@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Select'
-import { formatPKR } from '@/utils/financial'
+import { formatPKR, roundMoney } from '@/utils/financial'
 import { toast } from '@/stores/toast.store'
 import type { Customer } from '@/types'
 
@@ -68,6 +68,9 @@ export function ReceivePaymentModal({
   const numAmount = parseFloat(amount) || 0
   const maxCredit = billInfo ? billInfo.remainingCredit : customer ? customer.balance : 0
   const remainingBillCredit = billInfo ? Math.max(0, billInfo.remainingCredit - numAmount) : 0
+  // On a bill, money above its unpaid amount goes to the customer's older udhar
+  const oldUdhar = billInfo && customer?.id ? Math.max(0, roundMoney(customer.balance - billInfo.remainingCredit)) : 0
+  const toOldUdhar = billInfo ? Math.max(0, roundMoney(numAmount - billInfo.remainingCredit)) : 0
   const remainingCustomerBalance = customer ? customer.balance - numAmount : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -79,8 +82,10 @@ export function ReceivePaymentModal({
       return
     }
 
-    if (billInfo && numAmount > billInfo.remainingCredit + 0.01) {
-      setError(`Payment amount cannot exceed bill remaining credit (${formatPKR(billInfo.remainingCredit)}).`)
+    if (billInfo && toOldUdhar > oldUdhar + 0.01) {
+      setError(oldUdhar > 0
+        ? `Payment amount cannot exceed bill remaining credit plus old udhar (${formatPKR(billInfo.remainingCredit + oldUdhar)}).`
+        : `Payment amount cannot exceed bill remaining credit (${formatPKR(billInfo.remainingCredit)}).`)
       return
     }
 
@@ -178,6 +183,11 @@ export function ReceivePaymentModal({
           autoFocus
           required
         />
+        {toOldUdhar > 0 && toOldUdhar <= oldUdhar + 0.01 && billInfo && (
+          <p className="-mt-2 text-xs font-semibold text-blue-700">
+            {formatPKR(billInfo.remainingCredit)} for this bill + {formatPKR(toOldUdhar)} towards old udhar
+          </p>
+        )}
 
         <Select
           label="Payment Method"
