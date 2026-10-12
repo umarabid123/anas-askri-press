@@ -379,7 +379,7 @@ export function NewBillPage() {
                   <button
                     type="button"
                     onClick={handleClearCustomer}
-                    disabled={!!editingSale}
+                    disabled={!!editingSale && !!editingSale.customerId}
                     className="text-blue-400 hover:text-blue-700 ml-1 cursor-pointer"
                     title="Clear customer"
                   >
@@ -393,7 +393,7 @@ export function NewBillPage() {
           {editingSale && (
             <div role={editReason ? 'alert' : 'status'} className={`p-3 text-sm border rounded-xl ${editReason ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-blue-50 text-blue-900 border-blue-200'}`}>
               <p className="font-semibold">{checkingBill ? 'Checking this bill...' : editReason || 'You can edit this bill and save your changes.'}</p>
-              <p className="mt-1">{editReason ? 'Your entered items are still here. Use them in a new bill, or start with a blank bill.' : 'Save Changes updates this bill. You can correct Payment Received if it was entered wrong. The customer stays the same.'}</p>
+              <p className="mt-1">{editReason ? 'Your entered items are still here. Use them in a new bill, or start with a blank bill.' : editingSale.customerId ? 'Save Changes updates this bill. You can correct Payment Received if it was entered wrong. The customer stays the same.' : 'Save Changes updates this bill. You can select a customer or adjust payments as needed.'}</p>
               <div className="flex flex-wrap gap-3 mt-3">
                 <Button type="button" size="sm" disabled={isSaving} onClick={useItemsAsNewBill}>Use Items as New Bill</Button>
                 <Button type="button" size="sm" variant="outline" disabled={isSaving} onClick={() => { startNewBill() }}>Start Blank Bill</Button>
@@ -408,7 +408,7 @@ export function NewBillPage() {
 
 
           {/* Customer Selection Row */}
-          <fieldset disabled={!!editingSale}>
+          <fieldset disabled={!!editingSale && !!editingSale.customerId}>
             <label className="block text-[13px] font-semibold text-slate-800 mb-1.5">
               Customer <span className="font-normal text-slate-500">(Choose a customer if any amount is unpaid)</span>
             </label>

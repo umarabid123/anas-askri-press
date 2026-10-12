@@ -7,10 +7,14 @@ import {
   Plus,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatPKR, formatDate, localDateKey } from '@/utils/financial'
-import { getSales, getCustomers } from '@/services/sqlite.service'
+import { getSales, getCustomers, deleteSale } from '@/services/sqlite.service'
 import { ROUTES } from '@/constants/routes'
 import { cn } from '@/utils/cn'
+import { useCartStore } from '@/stores/cart.store'
+import { toast } from '@/stores/toast.store'
+import { editBlockReason } from '@/features/billing/bill-actions'
 import { BillPreviewModal } from '@/features/billing/components/BillPreviewModal'
 import type { ShopInvoiceData } from '@/features/billing/components/ShopInvoiceTemplate'
 import { saleToInvoiceData } from '@/features/billing/invoice-data'
@@ -41,6 +45,9 @@ export function MazdooriPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<ShopInvoiceData | null>(null)
   const [view, setView] = useState<'records' | 'weeks'>('records')
   const [isAddMazdooriOpen, setIsAddMazdooriOpen] = useState(false)
+  const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  const [deletingSale, setDeletingSale] = useState<Sale | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     const fetchData = () => {
@@ -101,6 +108,44 @@ export function MazdooriPage() {
 
   const totals = ledger.at(-1)
   const openBill = (sale: Sale) => setSelectedInvoice(saleToInvoiceData(sale, customers.find(c => c.id === sale.customerId)))
+
+  const handleEditMazdoori = (sale: Sale) => {
+    const isDirect = (sale.items.length <= 1) && (!sale.items[0]?.itemId)
+    if (isDirect) {
+      setEditingSale(sale)
+      setIsAddMazdooriOpen(true)
+    } else {
+      const blockReason = editBlockReason(sale.id, sales)
+      if (blockReason) {
+        toast.error(blockReason)
+        return
+      }
+      const customer = customers.find(c => c.id === sale.customerId) || null
+      useCartStore.getState().editBill(sale, customer)
+      toast.success(`Opening Bill #${sale.invoiceNumber} in bill editor.`)
+      navigate(ROUTES.NEW_BILL)
+    }
+  }
+
+  const handleDeleteMazdoori = (sale: Sale) => {
+    setDeletingSale(sale)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deletingSale) return
+    setIsDeleting(true)
+    try {
+      await deleteSale(deletingSale.id)
+      toast.success(`Mazdoori record #${deletingSale.invoiceNumber} deleted successfully.`)
+      setDeletingSale(null)
+      setReloadKey(k => k + 1)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not delete mazdoori record.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const filters: { value: DatePreset; label: string }[] = [
     { value: 'all', label: 'All time' }, { value: 'today', label: 'Today' }, { value: 'weekly', label: 'This week' },
     { value: 'monthly', label: 'This month' }, { value: 'custom', label: 'Custom dates' },
@@ -116,7 +161,10 @@ export function MazdooriPage() {
       <div className="flex items-center gap-3">
         <Button
           type="button"
-          onClick={() => setIsAddMazdooriOpen(true)}
+          onClick={() => {
+            setEditingSale(null)
+            setIsAddMazdooriOpen(true)
+          }}
           className="bg-blue-700 hover:bg-blue-800 flex items-center gap-1.5 shadow-xs shrink-0"
         >
           <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -128,7 +176,16 @@ export function MazdooriPage() {
         </div>
       </div>
     </header>
-    {view === 'weeks' ? <WeeklyMazdooriRecords sales={sales} isLoading={isLoading} error={error} onViewBill={openBill} /> : <section className="rounded-xl border border-slate-200 bg-white">
+    {view === 'weeks' ? (
+      <WeeklyMazdooriRecords
+        sales={sales}
+        isLoading={isLoading}
+        error={error}
+        onViewBill={openBill}
+        onEditMazdoori={handleEditMazdoori}
+        onDeleteMazdoori={handleDeleteMazdoori}
+      />
+    ) : <section className="rounded-xl border border-slate-200 bg-white">
       <div className="space-y-4 p-4 sm:p-5">
         <div className="flex flex-row gap-3 items-center justify-between">
           <div className="flex flex-wrap gap-1" role="group" aria-label="Date filters">{filters.map(filter => <button key={filter.value} type="button" aria-pressed={datePreset === filter.value} onClick={() => setDatePreset(filter.value)} className={cn('rounded-md px-3 py-2 text-sm cursor-pointer focus-visible:outline-2 focus-visible:outline-slate-500', datePreset === filter.value ? 'bg-blue-50 font-semibold text-blue-800 ring-1 ring-blue-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800')}>{filter.label}</button>)}</div>
@@ -147,7 +204,19 @@ export function MazdooriPage() {
         </dl>
         {error && <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       </div>
-      {isLoading ? <div className="p-12 text-center text-sm text-slate-500" role="status">Loading records…</div> : <div className="overflow-x-auto border-t border-slate-200"><MazdooriLedgerTable rows={paginatedRows} totals={totals} onViewBill={openBill} /></div>}
+      {isLoading ? (
+        <div className="p-12 text-center text-sm text-slate-500" role="status">Loading records…</div>
+      ) : (
+        <div className="overflow-x-auto border-t border-slate-200">
+          <MazdooriLedgerTable
+            rows={paginatedRows}
+            totals={totals}
+            onViewBill={openBill}
+            onEditMazdoori={handleEditMazdoori}
+            onDeleteMazdoori={handleDeleteMazdoori}
+          />
+        </div>
+      )}
       {filteredSales.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 sm:px-5">
         <p className="text-xs text-slate-500">{(validPage - 1) * PAGE_SIZE + 1}–{Math.min(validPage * PAGE_SIZE, filteredSales.length)} of {filteredSales.length} records</p>
         <div className="flex items-center gap-3">
@@ -159,11 +228,33 @@ export function MazdooriPage() {
     </section>}
     <BillPreviewModal isOpen={!!selectedInvoice} data={selectedInvoice} onClose={() => setSelectedInvoice(null)} onNewBill={() => navigate(ROUTES.NEW_BILL)} onCancelled={() => setReloadKey(k => k + 1)} />
 
-    {/* Add / Adjust Mazdoori Modal */}
+    {/* Add / Edit Mazdoori Modal */}
     <AddMazdooriModal
       isOpen={isAddMazdooriOpen}
-      onClose={() => setIsAddMazdooriOpen(false)}
+      onClose={() => {
+        setIsAddMazdooriOpen(false)
+        setEditingSale(null)
+      }}
+      editingSale={editingSale}
       onSuccess={() => setReloadKey((k) => k + 1)}
+    />
+
+    {/* Delete Confirmation Dialog */}
+    <ConfirmDialog
+      isOpen={!!deletingSale}
+      onClose={() => setDeletingSale(null)}
+      onConfirm={handleConfirmDelete}
+      title="Delete Mazdoori Record"
+      description={
+        deletingSale
+          ? `Are you sure you want to permanently delete Mazdoori record #${deletingSale.invoiceNumber}${
+              deletingSale.customerName ? ` for "${deletingSale.customerName}"` : ''
+            } (${formatPKR(Math.abs(deletingSale.totalMazdoori || 0))})? This action cannot be undone.`
+          : ''
+      }
+      confirmText="Delete Record"
+      variant="danger"
+      isLoading={isDeleting}
     />
   </div>
 }

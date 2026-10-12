@@ -979,3 +979,47 @@ test('pull sync merges remote mobile records into local database without echoing
   assert.ok(!queue.some(q => q.entityId === remoteCustomerId || q.entityId === remoteSaleId))
 })
 
+test('editing and deleting a direct mazdoori entry updates records and balance correctly', async () => {
+  const cust = await db.createCustomer({ name: 'Mazdoori Client', mobile: '03001234567' })
+  const invoiceNumber = await db.createDirectMazdooriEntry({
+    customerId: cust.id,
+    customerName: 'Mazdoori Client',
+    amount: 1500,
+    isDeduction: false,
+    itemName: 'Chadar Pressing',
+    weight: 20,
+    date: '2026-10-12',
+  })
+
+  let sales = await db.getSales()
+  let entry = sales.find(s => s.invoiceNumber === invoiceNumber)
+  assert.ok(entry)
+  assert.equal(entry.totalMazdoori, 1500)
+  assert.equal(entry.items[0].itemName, 'Chadar Pressing')
+  assert.equal(entry.items[0].quantity, 20)
+
+  // Edit the entry
+  await db.updateDirectMazdooriEntry(entry.id, {
+    customerId: cust.id,
+    customerName: 'Mazdoori Client',
+    amount: 2500,
+    isDeduction: false,
+    itemName: 'Updated Chadar Pressing',
+    weight: 35,
+    date: '2026-10-12',
+  })
+
+  sales = await db.getSales()
+  entry = sales.find(s => s.invoiceNumber === invoiceNumber)
+  assert.equal(entry.totalMazdoori, 2500)
+  assert.equal(entry.items[0].itemName, 'Updated Chadar Pressing')
+  assert.equal(entry.items[0].quantity, 35)
+
+  // Delete the entry
+  const deleted = await db.deleteSale(entry.id)
+  assert.equal(deleted, true)
+
+  sales = await db.getSales()
+  assert.ok(!sales.some(s => s.id === entry.id))
+})
+

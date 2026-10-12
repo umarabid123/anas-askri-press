@@ -52,7 +52,27 @@ export const useCartStore = create<CartState>((set, get) => ({
   draftId: crypto.randomUUID(),
   useItemsAsNewBill: () => set(state => ({ draftId: crypto.randomUUID(), editingSale: null, paidAmount: 0, paymentMethod: 'cash', notes: state.notes.split('\n').filter(line => !line.startsWith('Updated from bill #')).join('\n') })),
   editingSale: null,
-  editBill: (sale, customer) => set({ draftId: crypto.randomUUID(), editingSale: structuredClone(sale), customer, items: structuredClone(sale.items).map(item => ({ ...item, unit: item.unit || 'kg', amount: calculateItemAmount(item.quantity, item.rate) })), discount: sale.discount, paidAmount: sale.paidAmount, paymentMethod: sale.paymentMethod, notes: sale.notes || '' }),
+  editBill: (sale, customer) => set({
+    draftId: crypto.randomUUID(),
+    editingSale: structuredClone(sale),
+    customer,
+    items: structuredClone(sale.items).map(item => {
+      let rate = item.rate
+      if (item.quantity > 0 && item.amount > 0 && Math.abs(item.quantity * item.rate - item.amount) > 0.05) {
+        rate = Math.round((item.amount / item.quantity) * 100) / 100
+      }
+      return {
+        ...item,
+        rate,
+        unit: item.unit || 'kg',
+        amount: item.amount || calculateItemAmount(item.quantity, rate)
+      }
+    }),
+    discount: sale.discount,
+    paidAmount: sale.paidAmount,
+    paymentMethod: sale.paymentMethod,
+    notes: sale.notes || ''
+  }),
   customer: null,
   items: createInitialItems(),
   discount: 0,

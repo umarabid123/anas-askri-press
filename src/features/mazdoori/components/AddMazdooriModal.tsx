@@ -1,19 +1,20 @@
 import { useState, useEffect } from 'react'
-import { Plus, Minus, X, Receipt, User, Scale, Package } from 'lucide-react'
+import { Plus, Minus, X, Receipt, User, Scale, Package, Check } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { formatPKR, localDateKey } from '@/utils/financial'
-import { getCustomers, createDirectMazdooriEntry } from '@/services/sqlite.service'
+import { getCustomers, createDirectMazdooriEntry, updateDirectMazdooriEntry } from '@/services/sqlite.service'
 import { toast } from '@/stores/toast.store'
-import type { Customer } from '@/types'
+import type { Customer, Sale } from '@/types'
 
 interface AddMazdooriModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  editingSale?: Sale | null
 }
 
-export function AddMazdooriModal({ isOpen, onClose, onSuccess }: AddMazdooriModalProps) {
+export function AddMazdooriModal({ isOpen, onClose, onSuccess, editingSale }: AddMazdooriModalProps) {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [mode, setMode] = useState<'add' | 'minus'>('add')
 
@@ -36,9 +37,36 @@ export function AddMazdooriModal({ isOpen, onClose, onSuccess }: AddMazdooriModa
       getCustomers()
         .then(setCustomers)
         .catch(() => {})
-      resetForm()
+
+      if (editingSale) {
+        const isDeduction = (editingSale.totalMazdoori || 0) < 0
+        setMode(isDeduction ? 'minus' : 'add')
+        if (editingSale.customerId) {
+          setSelectedCustomerId(editingSale.customerId)
+          setCustomCustomerName('')
+          setIsTypingCustomName(false)
+        } else if (editingSale.customerName) {
+          setSelectedCustomerId('')
+          setCustomCustomerName(editingSale.customerName)
+          setIsTypingCustomName(true)
+        } else {
+          setSelectedCustomerId('')
+          setCustomCustomerName('')
+          setIsTypingCustomName(false)
+        }
+        setAmount(String(Math.abs(editingSale.totalMazdoori || 0)))
+        setWorkDate(localDateKey(editingSale.createdAt))
+        const firstItem = editingSale.items[0]
+        const rawDesc = firstItem?.itemName || ''
+        const isGeneric = rawDesc === 'Mazdoori Entry' || rawDesc === 'Mazdoori Deduction / Minus'
+        setItemName(isGeneric ? '' : rawDesc)
+        setWeight(firstItem?.unit === 'kg' && firstItem?.quantity ? String(firstItem.quantity) : '')
+        setError(null)
+      } else {
+        resetForm()
+      }
     }
-  }, [isOpen])
+  }, [isOpen, editingSale])
 
   const resetForm = () => {
     setSelectedCustomerId('')
@@ -73,23 +101,39 @@ export function AddMazdooriModal({ isOpen, onClose, onSuccess }: AddMazdooriModa
       const customerId = isTypingCustomName ? undefined : selectedCustomer?.id || undefined
       const customerMobile = isTypingCustomName ? undefined : selectedCustomer?.mobile || undefined
 
-      const invoiceNumber = await createDirectMazdooriEntry({
-        customerId,
-        customerName,
-        customerMobile,
-        amount: parsedAmount,
-        isDeduction: mode === 'minus',
-        itemName: itemName.trim() || undefined,
-        weight: parsedWeight > 0 ? parsedWeight : undefined,
-        date: workDate,
-      })
+      if (editingSale) {
+        const invoiceNumber = await updateDirectMazdooriEntry(editingSale.id, {
+          customerId,
+          customerName,
+          customerMobile,
+          amount: parsedAmount,
+          isDeduction: mode === 'minus',
+          itemName: itemName.trim() || undefined,
+          weight: parsedWeight > 0 ? parsedWeight : undefined,
+          date: workDate,
+        })
 
-      const formatted = formatPKR(parsedAmount)
-      const custText = customerName ? ` for ${customerName}` : ''
-      if (mode === 'add') {
-        toast.success(`Added ${formatted} Mazdoori${custText} (Ref: ${invoiceNumber})`)
+        const formatted = formatPKR(parsedAmount)
+        toast.success(`Updated Mazdoori ${formatted} (#${invoiceNumber})`)
       } else {
-        toast.success(`Deducted ${formatted} Mazdoori${custText} (Ref: ${invoiceNumber})`)
+        const invoiceNumber = await createDirectMazdooriEntry({
+          customerId,
+          customerName,
+          customerMobile,
+          amount: parsedAmount,
+          isDeduction: mode === 'minus',
+          itemName: itemName.trim() || undefined,
+          weight: parsedWeight > 0 ? parsedWeight : undefined,
+          date: workDate,
+        })
+
+        const formatted = formatPKR(parsedAmount)
+        const custText = customerName ? ` for ${customerName}` : ''
+        if (mode === 'add') {
+          toast.success(`Added ${formatted} Mazdoori${custText} (Ref: ${invoiceNumber})`)
+        } else {
+          toast.success(`Deducted ${formatted} Mazdoori${custText} (Ref: ${invoiceNumber})`)
+        }
       }
 
       onSuccess()
@@ -121,9 +165,13 @@ export function AddMazdooriModal({ isOpen, onClose, onSuccess }: AddMazdooriModa
               <Receipt className="w-5 h-5 text-teal-400" />
             </div>
             <div>
-              <h3 className="font-bold text-base leading-tight">Mazdoori Entry</h3>
+              <h3 className="font-bold text-base leading-tight">
+                {editingSale ? `Edit Mazdoori (${editingSale.invoiceNumber})` : 'Mazdoori Entry'}
+              </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Add labor charges (+) or minus / deduct mazdoori (-)
+                {editingSale
+                  ? 'Update labor charges or minus deduction'
+                  : 'Add labor charges (+) or minus / deduct mazdoori (-)'}
               </p>
             </div>
           </div>
@@ -331,12 +379,22 @@ export function AddMazdooriModal({ isOpen, onClose, onSuccess }: AddMazdooriModa
                   : 'bg-red-600 hover:bg-red-700'
               }`}
             >
-              {mode === 'add' ? (
+              {editingSale ? (
+                <Check className="w-4 h-4 stroke-[2.5]" />
+              ) : mode === 'add' ? (
                 <Plus className="w-4 h-4 stroke-[2.5]" />
               ) : (
                 <Minus className="w-4 h-4 stroke-[2.5]" />
               )}
-              <span>{mode === 'add' ? 'Add Mazdoori' : 'Minus Mazdoori'}</span>
+              <span>
+                {editingSale
+                  ? mode === 'add'
+                    ? 'Update Mazdoori'
+                    : 'Update Deduction'
+                  : mode === 'add'
+                  ? 'Add Mazdoori'
+                  : 'Minus Mazdoori'}
+              </span>
             </Button>
           </div>
         </form>

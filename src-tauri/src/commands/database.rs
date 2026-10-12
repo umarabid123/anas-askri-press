@@ -1520,6 +1520,7 @@ pub fn create_direct_mazdoori_entry(
     };
 
     let total = if dto.is_deduction { 0.0 } else { amount };
+    let item_rate = if qty > 0.0 { (total / qty * 100.0).round() / 100.0 } else { total };
 
     tx.execute(
         "INSERT INTO sales (id, invoice_number, customer_id, customer_name, customer_mobile, subtotal, discount, total_mazdoori, total, paid_amount, remaining_credit, payment_method, notes, created_at, sync_status)
@@ -1548,7 +1549,7 @@ pub fn create_direct_mazdoori_entry(
             sale_id,
             desc,
             qty,
-            total,
+            item_rate,
             mazdoori_val,
             total,
             unit,
@@ -1557,6 +1558,137 @@ pub fn create_direct_mazdoori_entry(
 
     tx.commit().map_err(|e| e.to_string())?;
     Ok(number)
+}
+
+#[tauri::command]
+pub fn update_direct_mazdoori_entry(
+    sale_id: String,
+    dto: DirectMazdooriDto,
+    state: State<DbState>,
+) -> Result<String, String> {
+    let mut conn = state.0.lock().map_err(|e| e.to_string())?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let amount = (dto.amount * 100.0).round() / 100.0;
+    if !amount.is_finite() || amount <= 0.0 {
+        return Err("Please enter a valid mazdoori amount greater than 0".into());
+    }
+
+    let invoice_number: String = tx.query_row(
+        "SELECT invoice_number FROM sales WHERE id = ?1",
+        params![sale_id],
+        |r| r.get(0),
+    ).optional().map_err(|e| e.to_string())?.ok_or("Mazdoori record not found")?;
+
+    let mazdoori_val = if dto.is_deduction { -amount } else { amount };
+    let total = if dto.is_deduction { 0.0 } else { amount };
+
+    let (cust_id, cust_name, cust_mobile) = if let Some(ref cid) = dto.customer_id {
+        if !cid.trim().is_empty() {
+            let res: Option<(String, String)> = tx.query_row(
+                "SELECT name, mobile FROM customers WHERE id = ?1",
+                params![cid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            ).optional().map_err(|e| e.to_string())?;
+            if let Some((n, m)) = res {
+                (Some(cid.clone()), Some(dto.customer_name.unwrap_or(n)), Some(dto.customer_mobile.unwrap_or(m)))
+            } else {
+                (None, dto.customer_name, dto.customer_mobile)
+            }
+        } else {
+            (None, dto.customer_name, dto.customer_mobile)
+        }
+    } else {
+        (None, dto.customer_name, dto.customer_mobile)
+    };
+
+    let cust_name_final = cust_name.filter(|n| !n.trim().is_empty());
+    let cust_mobile_final = cust_mobile.filter(|m| !m.trim().is_empty());
+
+    let date_str = match dto.date {
+        Some(ref d) if !d.trim().is_empty() => {
+            if d.len() == 10 {
+                format!("{}T12:00:00Z", d.trim())
+            } else {
+                d.trim().to_string()
+            }
+        }
+        _ => chrono::Utc::now().to_rfc3339(),
+    };
+
+    let desc = dto.item_name
+        .or(dto.work_detail)
+        .filter(|w| !w.trim().is_empty())
+        .unwrap_or_else(|| {
+            if dto.is_deduction {
+                "Mazdoori Deduction / Minus".to_string()
+            } else {
+                "Mazdoori Entry".to_string()
+            }
+        });
+
+    let (qty, unit) = match dto.weight {
+        Some(w) if w > 0.0 => (w, "kg".to_string()),
+        _ => (1.0, "qty".to_string()),
+    };
+
+    tx.execute(
+        "UPDATE sales
+         SET customer_id = ?1,
+             customer_name = ?2,
+             customer_mobile = ?3,
+             subtotal = ?4,
+             discount = 0.0,
+             total_mazdoori = ?5,
+             total = ?6,
+             paid_amount = ?7,
+             remaining_credit = 0.0,
+             payment_method = 'cash',
+             notes = ?8,
+             created_at = ?9,
+             updated_at = datetime('now'),
+             sync_status = 'pending'
+         WHERE id = ?10",
+        params![
+            cust_id,
+            cust_name_final,
+            cust_mobile_final,
+            total,
+            mazdoori_val,
+            total,
+            total,
+            dto.notes,
+            date_str,
+            sale_id,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute(
+        "DELETE FROM sale_item_mazdoori_tasks WHERE sale_item_id IN (SELECT id FROM sale_items WHERE sale_id = ?1)",
+        params![sale_id],
+    ).map_err(|e| e.to_string())?;
+
+    tx.execute("DELETE FROM sale_items WHERE sale_id = ?1", params![sale_id]).map_err(|e| e.to_string())?;
+
+    let item_id = Uuid::new_v4().to_string();
+    let item_rate = if qty > 0.0 { (total / qty * 100.0).round() / 100.0 } else { total };
+    tx.execute(
+        "INSERT INTO sale_items (id, sale_id, item_name, quantity, rate, mazdoori, amount, unit)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![
+            item_id,
+            sale_id,
+            desc,
+            qty,
+            item_rate,
+            mazdoori_val,
+            total,
+            unit,
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(invoice_number)
 }
 
 #[tauri::command]
@@ -1800,14 +1932,22 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
     ).optional().map_err(|e| e.to_string())?.ok_or("Bill not found")?;
 
-    if old_customer_id.as_deref().filter(|id| !id.is_empty()) != sale.customer_id.as_deref().filter(|id| !id.is_empty()) { return Err("The customer cannot be changed on a saved bill.".into()); }
+    let old_cid_filter = old_customer_id.as_deref().filter(|id| !id.is_empty());
+    let new_cid_filter = sale.customer_id.as_deref().filter(|id| !id.is_empty());
+    if old_cid_filter.is_some() && new_cid_filter.is_some() && old_cid_filter != new_cid_filter {
+        return Err("The customer cannot be changed on a saved bill.".into());
+    }
     let receipt_note = format!("Payment for invoice {}", old_number);
     let initial_receipt: Option<String> = tx.query_row("SELECT id FROM payments WHERE sale_id=?1 AND (notes=?2 OR id=?3) LIMIT 1", params![sale_id, receipt_note, format!("receipt-{}", sale_id)], |r| r.get(0)).optional().map_err(|e| e.to_string())?;
     let later_paid: f64 = tx.query_row("SELECT COALESCE(SUM(amount),0) FROM payments WHERE sale_id=?1 AND id<>?2", params![sale_id, initial_receipt.as_deref().unwrap_or("")], |r| r.get(0)).map_err(|e| e.to_string())?;
     if sale.paid_amount < later_paid { return Err("Later payments are already recorded for this bill. Payment Received cannot be less than those payments.".into()); }
     let corrected_initial_paid = ((sale.paid_amount - later_paid) * 100.0).round() / 100.0;
-    let original_ledger: Option<(i64, f64)> = tx.query_row("SELECT rowid,credit FROM customer_ledger WHERE sale_id=?1 AND description=?2 LIMIT 1", params![sale_id, format!("Invoice #{}", old_number)], |r| Ok((r.get(0)?,r.get(1)?))).optional().map_err(|e| e.to_string())?;
-    if old_customer_id.as_deref().is_some_and(|id| !id.is_empty()) && original_ledger.is_none() { return Err("This bill is missing its customer ledger entry. Restore the record before editing.".into()); }
+    let original_ledger: Option<(i64, f64)> = tx.query_row(
+        "SELECT rowid,credit FROM customer_ledger WHERE sale_id=?1 ORDER BY rowid ASC LIMIT 1",
+        params![sale_id],
+        |r| Ok((r.get(0)?, r.get(1)?))
+    ).optional().map_err(|e| e.to_string())?;
+
 
     if sale.items.is_empty() || !sale.discount.is_finite() || sale.discount < 0.0 || !sale.paid_amount.is_finite() || sale.paid_amount < 0.0 || !["cash", "bank"].contains(&sale.payment_method.as_str()) {
         return Err("Invalid bill or payment".into());
@@ -2096,16 +2236,9 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
         ).map_err(|e| e.to_string())?;
 
         let current_bal: f64 = tx.query_row("SELECT balance FROM customers WHERE id = ?1", params![cust_id], |r| r.get(0)).unwrap_or(0.0);
-        let has_ledger: bool = tx.query_row(
-            "SELECT COUNT(*) FROM customer_ledger WHERE sale_id = ?1",
-            params![sale_id],
-            |r| r.get::<_, i64>(0),
-        ).map(|c| c > 0).unwrap_or(false);
-
-        if has_ledger {
-            let (ledger_rowid, original_credit) = original_ledger.ok_or("Missing invoice ledger")?;
+        if let Some((ledger_rowid, original_credit)) = original_ledger {
             let delta = sale.total - old_total - (corrected_initial_paid - original_credit);
-            tx.execute("UPDATE customer_ledger SET balance=ROUND(balance+?1,2),sync_status='pending' WHERE customer_id=?2 AND rowid>=?3", params![delta,cust_id,ledger_rowid]).map_err(|e| e.to_string())?;
+            tx.execute("UPDATE customer_ledger SET balance=ROUND(balance+?1,2),sync_status='pending' WHERE customer_id=?2 AND rowid>=?3", params![delta, cust_id, ledger_rowid]).map_err(|e| e.to_string())?;
             tx.execute(
                 "UPDATE customer_ledger
                  SET debit = ?1,
@@ -2120,7 +2253,7 @@ fn update_sale_in_transaction(sale_id: &str, mut sale: CreateSaleDto, tx: &rusql
             tx.execute(
                 "INSERT INTO customer_ledger (id, customer_id, date, description, debit, credit, balance, sale_id, created_at, sync_status)
                  VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), 'pending')",
-                params![ledger_id, cust_id, format!("Invoice #{}", old_number), sale.total, sale.paid_amount, current_bal, sale_id],
+                params![ledger_id, cust_id, format!("Invoice #{}", old_number), sale.total, corrected_initial_paid, current_bal, sale_id],
             ).map_err(|e| e.to_string())?;
         }
     }

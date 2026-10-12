@@ -367,7 +367,7 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
   return transaction(t => {
     const sale = found(t, 'sales', saleId)
     if (sale.cancelled_at) throw new Error('A cancelled bill cannot be edited. Start a new bill.')
-    if ((sale.customer_id || null) !== (input.customerId || null)) throw new Error('The customer cannot be changed on a saved bill.')
+    if (sale.customer_id && input.customerId && sale.customer_id !== input.customerId) throw new Error('The customer cannot be changed on a saved bill.')
     if (!['cash', 'bank'].includes(input.paymentMethod)) throw new Error('Choose cash or bank.')
     if (bill.remainingCredit > 0 && !input.customerId) throw new Error('Select a customer for an unpaid bill, or enter the full payment.')
     const oldTotal = Number(sale.total), oldPaid = Number(sale.paid_amount), oldCredit = Number(sale.remaining_credit)
@@ -375,21 +375,50 @@ export async function updateSale(saleId: string, input: CreateSaleInput): Promis
     const laterPaid = roundMoney(t.payments.filter(p => p.sale_id === saleId && p.id !== initialReceipt?.id).reduce((sum, p) => sum + Number(p.amount), 0))
     if (bill.paidAmount < laterPaid) throw new Error('Later payments are already recorded for this bill. Payment Received cannot be less than those payments.')
     const correctedInitialPaid = roundMoney(bill.paidAmount - laterPaid)
-    const ledgerRow = t.customer_ledger.find(row => row.sale_id === saleId && row.description === 'Invoice #' + sale.invoice_number)
+    const ledgerRow = t.customer_ledger.find(row => row.sale_id === saleId)
     const oldInitialPaid = ledgerRow ? Number(ledgerRow.credit) : initialReceipt ? Number(initialReceipt.amount) : roundMoney(oldPaid - laterPaid)
     if (input.customerId) {
       const account = found(t, 'customers', input.customerId)
-      account.total_purchase = roundMoney(Number(account.total_purchase) + bill.total - oldTotal)
-      account.total_paid = roundMoney(Number(account.total_paid) + bill.paidAmount - oldPaid)
-      account.balance = roundMoney(Number(account.balance) + bill.remainingCredit - oldCredit)
-      touch(account)
-      if (!ledgerRow) throw new Error('This bill is missing its customer ledger entry. Restore the record before editing.')
-      const customerRows = t.customer_ledger.filter(row => row.customer_id === input.customerId)
-      const position = customerRows.indexOf(ledgerRow)
-      const delta = roundMoney(bill.total - oldTotal - (correctedInitialPaid - oldInitialPaid))
-      ledgerRow.debit = bill.total
-      ledgerRow.credit = correctedInitialPaid
-      for (const row of customerRows.slice(position)) { row.balance = roundMoney(Number(row.balance) + delta); touch(row) }
+      if (!sale.customer_id) {
+        account.total_purchase = roundMoney(Number(account.total_purchase) + bill.total)
+        account.total_paid = roundMoney(Number(account.total_paid) + bill.paidAmount)
+        account.balance = roundMoney(Number(account.balance) + bill.remainingCredit)
+        touch(account)
+        t.customer_ledger.push(toRow(stamp({
+          id: crypto.randomUUID(),
+          customerId: account.id,
+          saleId: sale.id,
+          date: sale.created_at,
+          description: 'Invoice #' + sale.invoice_number,
+          debit: bill.total,
+          credit: correctedInitialPaid,
+          balance: account.balance,
+        })))
+      } else {
+        account.total_purchase = roundMoney(Number(account.total_purchase) + bill.total - oldTotal)
+        account.total_paid = roundMoney(Number(account.total_paid) + bill.paidAmount - oldPaid)
+        account.balance = roundMoney(Number(account.balance) + bill.remainingCredit - oldCredit)
+        touch(account)
+        if (!ledgerRow) {
+          t.customer_ledger.push(toRow(stamp({
+            id: crypto.randomUUID(),
+            customerId: account.id,
+            saleId: sale.id,
+            date: sale.created_at,
+            description: 'Invoice #' + sale.invoice_number,
+            debit: bill.total,
+            credit: correctedInitialPaid,
+            balance: account.balance,
+          })))
+        } else {
+          const customerRows = t.customer_ledger.filter(row => row.customer_id === input.customerId)
+          const position = customerRows.indexOf(ledgerRow)
+          const delta = roundMoney(bill.total - oldTotal - (correctedInitialPaid - oldInitialPaid))
+          ledgerRow.debit = bill.total
+          ledgerRow.credit = correctedInitialPaid
+          for (const row of customerRows.slice(position)) { row.balance = roundMoney(Number(row.balance) + delta); touch(row) }
+        }
+      }
     }
     sale.customer_id = input.customerId || null
     sale.customer_name = input.customerName || null
@@ -613,7 +642,7 @@ export async function createDirectMazdooriEntry(dto: {
         item_id: null,
         item_name: desc,
         quantity: qty,
-        rate: total,
+        rate: qty > 0 ? roundMoney(total / qty) : total,
         mazdoori,
         amount: total,
         unit,
@@ -623,6 +652,65 @@ export async function createDirectMazdooriEntry(dto: {
     t.sales.unshift(toRow(sale))
     t.sale_items.push(toRow(sale.items[0]))
     return invoiceNumber
+  })
+}
+export async function updateDirectMazdooriEntry(saleId: string, dto: {
+  customerId?: string
+  customerName?: string
+  customerMobile?: string
+  amount: number
+  isDeduction?: boolean
+  itemName?: string
+  workDetail?: string
+  weight?: number
+  date?: string
+  notes?: string
+}): Promise<string> {
+  const amount = roundMoney(dto.amount)
+  assertAmount(amount, 'Mazdoori amount')
+  if (isTauri()) return invoke('update_direct_mazdoori_entry', { saleId, dto })
+  return transaction(t => {
+    const sale = found(t, 'sales', saleId)
+    const mazdoori = dto.isDeduction ? -amount : amount
+    const total = dto.isDeduction ? 0 : amount
+    const desc = dto.itemName?.trim() || dto.workDetail?.trim() || (dto.isDeduction ? 'Mazdoori Deduction / Minus' : 'Mazdoori Entry')
+    const hasWeight = (dto.weight || 0) > 0
+    const qty = hasWeight ? Number(dto.weight) : 1
+    const unit: 'kg' | 'qty' = hasWeight ? 'kg' : 'qty'
+    const dateStr = dto.date ? (dto.date.length === 10 ? `${dto.date}T12:00:00Z` : dto.date) : sale.created_at
+
+    sale.customer_id = dto.customerId || null
+    sale.customer_name = dto.customerName?.trim() || null
+    sale.customer_mobile = dto.customerMobile?.trim() || null
+    sale.subtotal = total
+    sale.discount = 0
+    sale.total_mazdoori = mazdoori
+    sale.total = total
+    sale.paid_amount = total
+    sale.remaining_credit = 0
+    sale.payment_method = 'cash'
+    sale.notes = dto.notes || null
+    sale.created_at = dateStr
+    sale.sync_status = 'pending'
+    touch(sale)
+
+    t.sale_item_mazdoori_tasks = t.sale_item_mazdoori_tasks.filter(m => !t.sale_items.some(si => si.id === m.sale_item_id && si.sale_id === saleId))
+    t.sale_items = t.sale_items.filter(si => si.sale_id !== saleId)
+
+    const updatedItem = {
+      id: crypto.randomUUID(),
+      sale_id: saleId,
+      item_id: null,
+      item_name: desc,
+      quantity: qty,
+      rate: qty > 0 ? roundMoney(total / qty) : total,
+      mazdoori,
+      amount: total,
+      unit,
+      mazdoori_tasks: [],
+    }
+    t.sale_items.push(toRow(updatedItem))
+    return String(sale.invoice_number)
   })
 }
 export async function getSales(limit = -1): Promise<Sale[]> {

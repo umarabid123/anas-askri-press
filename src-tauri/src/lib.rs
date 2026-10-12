@@ -50,6 +50,7 @@ pub fn run() {
             get_mazdoori_entries,
             create_mazdoori_entry,
             create_direct_mazdoori_entry,
+            update_direct_mazdoori_entry,
             delete_mazdoori_entry,
             pay_mazdoor,
             get_sales,

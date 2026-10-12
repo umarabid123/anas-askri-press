@@ -8,7 +8,21 @@ import { MazdooriLedgerTable } from './MazdooriLedgerTable'
 const dateLabel = (date: string) => formatDate(date + 'T12:00:00')
 const buttonClass = 'rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-500 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
 
-export function WeeklyMazdooriRecords({ sales, isLoading, error, onViewBill }: { sales: Sale[]; isLoading: boolean; error: string | null; onViewBill: (sale: Sale) => void }) {
+export function WeeklyMazdooriRecords({
+  sales,
+  isLoading,
+  error,
+  onViewBill,
+  onEditMazdoori,
+  onDeleteMazdoori,
+}: {
+  sales: Sale[]
+  isLoading: boolean
+  error: string | null
+  onViewBill: (sale: Sale) => void
+  onEditMazdoori?: (sale: Sale) => void
+  onDeleteMazdoori?: (sale: Sale) => void
+}) {
   const weeks = useMemo(() => mazdooriWeeks(sales), [sales])
   const [selectedStart, setSelectedStart] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -62,7 +76,13 @@ export function WeeklyMazdooriRecords({ sales, isLoading, error, onViewBill }: {
           <p className="text-xs mt-1">{selected.days} days with mazdoori · {selected.bills} active bills · Friday holiday</p>
         </div>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <MazdooriLedgerTable rows={selectedLedger} totals={selectedLedger.at(-1)} onViewBill={sale => { setSelectedStart(null); onViewBill(sale) }} />
+          <MazdooriLedgerTable
+            rows={selectedLedger}
+            totals={selectedLedger.at(-1)}
+            onViewBill={sale => { setSelectedStart(null); onViewBill(sale) }}
+            onEditMazdoori={onEditMazdoori ? (sale) => { setSelectedStart(null); onEditMazdoori(sale) } : undefined}
+            onDeleteMazdoori={onDeleteMazdoori ? (sale) => { setSelectedStart(null); onDeleteMazdoori(sale) } : undefined}
+          />
         </div>
       </div>}
     </Modal>
