@@ -88,6 +88,9 @@ export function UpdateBillPage() {
 
   useEffect(() => {
     loadData()
+    const handleRemoteSync = () => { void loadData() }
+    window.addEventListener('arki_data_synced', handleRemoteSync)
+    return () => window.removeEventListener('arki_data_synced', handleRemoteSync)
   }, [reloadKey])
 
   // Reset pagination whenever filters or search query changes

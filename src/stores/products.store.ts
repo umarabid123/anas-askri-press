@@ -56,3 +56,9 @@ export const useProductStore = create<ProductsState>((set) => ({
     return true
   },
 }))
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('arki_data_synced', () => {
+    void useProductStore.getState().loadProducts()
+  })
+}
