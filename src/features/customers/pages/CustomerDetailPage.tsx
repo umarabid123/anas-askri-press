@@ -5,15 +5,18 @@ import {
   DollarSign,
   Edit,
   Eye,
+  FileEdit,
   FilePlus,
   Printer,
   Search,
+  Trash2,
   Wallet,
   ShoppingBag,
   Clock,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatPKR, formatDate, parseLedgerDetails } from '@/utils/financial'
 import { cn } from '@/utils/cn'
 import {
@@ -22,8 +25,10 @@ import {
   updateCustomer,
   receivePayment,
   getSales,
+  deleteSale,
 } from '@/services/sqlite.service'
-import { startNewBill } from '@/features/billing/bill-actions'
+import { startNewBill, editBlockReason } from '@/features/billing/bill-actions'
+import { useCartStore } from '@/stores/cart.store'
 import { toast } from '@/stores/toast.store'
 import { ROUTES } from '@/constants/routes'
 import { EditCustomerModal } from '../components/EditCustomerModal'
@@ -87,6 +92,8 @@ export function CustomerDetailPage() {
     return res
   }
 
+  const [deletingSale, setDeletingSale] = useState<Sale | null>(null)
+
   const handleReceivePayment = async (data: {
     customerId: string
     saleId?: string
@@ -95,6 +102,11 @@ export function CustomerDetailPage() {
     notes?: string
   }) => {
     const paymentId = await receivePayment(data)
+    if (data.saleId && payingBill) {
+      toast.success(`Payment of ${formatPKR(data.amount)} received for Bill #${payingBill.invoiceNumber}!`)
+    } else {
+      toast.success(`Payment of ${formatPKR(data.amount)} received successfully!`)
+    }
     await loadData()
     return paymentId
   }
@@ -107,6 +119,30 @@ export function CustomerDetailPage() {
       remainingCredit: sale.remainingCredit || 0,
     })
     setIsPaymentOpen(true)
+  }
+
+  const handleUpdateBill = (sale: Sale) => {
+    const blockReason = editBlockReason(sale.id, sales)
+    if (blockReason) {
+      toast.error(blockReason)
+      return
+    }
+
+    useCartStore.getState().editBill(sale, customer)
+    toast.success(`Opening Bill #${sale.invoiceNumber} to update.`)
+    navigate(ROUTES.NEW_BILL)
+  }
+
+  const handleDeleteSaleConfirm = async () => {
+    if (!deletingSale) return
+    try {
+      await deleteSale(deletingSale.id)
+      toast.success(`Bill #${deletingSale.invoiceNumber} deleted successfully.`)
+      setDeletingSale(null)
+      await loadData()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Could not delete bill.')
+    }
   }
 
   // Open an invoice (from a ledger row or the invoices tab) in the bill preview popup
@@ -343,6 +379,7 @@ export function CustomerDetailPage() {
                   const status = ledgerEntryStatus(entry, sales)
                   const { cleanDescription, receivedBy } = parseLedgerDetails(entry.description)
                   const matchingSale = saleId ? sales.find((s) => s.id === saleId) : null
+                  const isOpeningBal = entry.description.toLowerCase().includes('opening balance')
 
                   return (
                   <tr
@@ -384,27 +421,74 @@ export function CustomerDetailPage() {
                       </Badge>
                     </td>
                     <td className="py-3 px-4 text-center whitespace-nowrap">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (matchingSale && (matchingSale.remainingCredit || 0) > 0 && !matchingSale.cancelledAt) {
-                            handleOpenReceiveForSale(matchingSale)
-                          } else {
+                      {matchingSale ? (
+                        <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {/* Update Bill */}
+                          <button
+                            type="button"
+                            onClick={() => handleUpdateBill(matchingSale)}
+                            className="h-7 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap bg-blue-700 hover:bg-blue-800 text-white shadow-2xs"
+                            title={`Update Bill #${matchingSale.invoiceNumber}`}
+                          >
+                            <FileEdit className="w-3.5 h-3.5" />
+                            <span>Update</span>
+                          </button>
+
+                          {/* Receive Payment */}
+                          {(() => {
+                            const isPaid = (matchingSale.remainingCredit || 0) <= 0 || !!matchingSale.cancelledAt
+                            return (
+                              <button
+                                type="button"
+                                disabled={isPaid}
+                                onClick={() => handleOpenReceiveForSale(matchingSale)}
+                                className={`h-7 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap ${
+                                  isPaid
+                                    ? 'border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs'
+                                }`}
+                                title={
+                                  matchingSale.cancelledAt
+                                    ? 'Bill is cancelled'
+                                    : isPaid
+                                    ? `Bill #${matchingSale.invoiceNumber} is fully received`
+                                    : `Receive payment for ${matchingSale.invoiceNumber}`
+                                }
+                              >
+                                <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
+                                <span>{isPaid ? 'Received' : 'Receive'}</span>
+                              </button>
+                            )
+                          })()}
+
+                          {/* Delete Bill */}
+                          <button
+                            type="button"
+                            onClick={() => setDeletingSale(matchingSale)}
+                            className="h-7 px-2 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                            title={`Delete Bill #${matchingSale.invoiceNumber}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      ) : isOpeningBal && (customer?.balance || 0) > 0 ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
                             setPayingBill(null)
                             setIsPaymentOpen(true)
-                          }
-                        }}
-                        className="h-7 px-2.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-2xs cursor-pointer transition-colors mx-auto"
-                        title={
-                          matchingSale && (matchingSale.remainingCredit || 0) > 0
-                            ? `Receive payment for ${matchingSale.invoiceNumber}`
-                            : `Receive payment from ${customer?.name || 'customer'}`
-                        }
-                      >
-                        <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
-                        <span>Receive</span>
-                      </button>
+                          }}
+                          className="h-7 px-2.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 shadow-2xs cursor-pointer transition-colors mx-auto"
+                          title="Receive payment for opening balance"
+                        >
+                          <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
+                          <span>Receive</span>
+                        </button>
+                      ) : (
+                        <span className="text-slate-400 text-xs font-medium">-</span>
+                      )}
                     </td>
                   </tr>
                   )
@@ -416,7 +500,7 @@ export function CustomerDetailPage() {
         ) : (
         /* Invoices Table */
         <div className="border border-slate-200 rounded-lg overflow-x-auto flex-1">
-          <table className="w-full min-w-[860px] text-left text-sm border-collapse">
+          <table className="w-full min-w-[960px] text-left text-sm border-collapse">
             <thead>
               <tr className="bg-slate-100 border-b border-slate-200 text-[12px] font-semibold text-slate-700">
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
@@ -426,7 +510,7 @@ export function CustomerDetailPage() {
                 <th className="py-2.5 px-4 text-right">Paid</th>
                 <th className="py-2.5 px-4 text-right">Balance</th>
                 <th className="py-2.5 px-4 text-center w-36">Bill Status</th>
-                <th className="py-2.5 px-4 text-center w-36">Action</th>
+                <th className="py-2.5 px-4 text-center w-64">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -457,34 +541,64 @@ export function CustomerDetailPage() {
                     </td>
                     <td className="py-3 px-4 text-center whitespace-nowrap">
                       <div className="flex items-center justify-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        {/* Update Bill */}
                         <button
                           type="button"
-                          onClick={() => {
-                            if ((sale.remainingCredit || 0) > 0 && !sale.cancelledAt) {
-                              handleOpenReceiveForSale(sale)
-                            } else {
-                              setPayingBill(null)
-                              setIsPaymentOpen(true)
-                            }
-                          }}
-                          className="h-7 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs"
-                          title={
-                            (sale.remainingCredit || 0) > 0
-                              ? `Receive payment for ${sale.invoiceNumber}`
-                              : `Receive payment from ${customer?.name || 'customer'}`
-                          }
+                          onClick={() => handleUpdateBill(sale)}
+                          className="h-7 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer whitespace-nowrap bg-blue-700 hover:bg-blue-800 text-white shadow-2xs"
+                          title={`Update Bill #${sale.invoiceNumber}`}
                         >
-                          <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
-                          <span>Receive</span>
+                          <FileEdit className="w-3.5 h-3.5" />
+                          <span>Update</span>
                         </button>
+
+                        {/* View Bill */}
                         <button
                           type="button"
                           onClick={() => handleViewInvoice(sale.id)}
-                          className="h-7 px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                          title="View invoice"
+                          className="h-7 px-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          title="View / Print invoice"
                         >
                           <Eye className="w-3.5 h-3.5" />
                           <span>View</span>
+                        </button>
+
+                        {/* Receive Payment */}
+                        {(() => {
+                          const isPaid = (sale.remainingCredit || 0) <= 0 || !!sale.cancelledAt
+                          return (
+                            <button
+                              type="button"
+                              disabled={isPaid}
+                              onClick={() => handleOpenReceiveForSale(sale)}
+                              className={`h-7 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors whitespace-nowrap ${
+                                isPaid
+                                  ? 'border border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed opacity-60'
+                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer shadow-2xs'
+                              }`}
+                              title={
+                                sale.cancelledAt
+                                  ? 'Bill is cancelled'
+                                  : isPaid
+                                  ? `Bill #${sale.invoiceNumber} is fully received`
+                                  : `Receive payment for ${sale.invoiceNumber}`
+                              }
+                            >
+                              <DollarSign className="w-3.5 h-3.5 stroke-[2.2]" />
+                              <span>{isPaid ? 'Received' : 'Receive'}</span>
+                            </button>
+                          )
+                        })()}
+
+                        {/* Delete Bill */}
+                        <button
+                          type="button"
+                          onClick={() => setDeletingSale(sale)}
+                          className="h-7 px-2 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
+                          title={`Delete Bill #${sale.invoiceNumber}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Delete</span>
                         </button>
                       </div>
                     </td>
@@ -529,6 +643,17 @@ export function CustomerDetailPage() {
         onClose={() => setSelectedInvoice(null)}
         onNewBill={() => { setSelectedInvoice(null); handleNewBill() }}
         onCancelled={loadData}
+      />
+
+      <ConfirmDialog
+        isOpen={!!deletingSale}
+        title="Delete Bill"
+        description={`Are you sure you want to permanently delete Bill #${deletingSale?.invoiceNumber}? This will remove the bill from the customer account and revert ledger balances.`}
+        confirmText="Delete Bill"
+        cancelText="Keep Bill"
+        variant="danger"
+        onClose={() => setDeletingSale(null)}
+        onConfirm={handleDeleteSaleConfirm}
       />
     </div>
   )
