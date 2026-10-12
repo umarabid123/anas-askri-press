@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { formatPKR, formatDate } from '@/utils/financial'
+import { formatPKR, formatDate, parseLedgerDetails } from '@/utils/financial'
 import { cn } from '@/utils/cn'
 import {
   getCustomerById,
@@ -273,16 +273,26 @@ export function CustomerDetailPage() {
             </div>
           </div>
 
-          {/* Search ledger */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              placeholder={activeTab === 'ledger' ? 'Search ledger entries...' : 'Search invoice number...'}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+          {/* Search ledger & Receive button */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-60">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                placeholder={activeTab === 'ledger' ? 'Search ledger entries...' : 'Search invoice number...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-9 pl-9 pr-3 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <Button
+              type="button"
+              onClick={() => setIsPaymentOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-9 px-3.5 flex items-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+            >
+              <DollarSign className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Receive</span>
+            </Button>
           </div>
         </div>
 
@@ -295,6 +305,7 @@ export function CustomerDetailPage() {
                 <th className="py-2.5 px-3 w-10 text-center">#</th>
                 <th className="py-2.5 px-4">Date</th>
                 <th className="py-2.5 px-4">Description</th>
+                <th className="py-2.5 px-3 text-center w-28">By Hand</th>
                 <th className="py-2.5 px-4 text-right">Debit (+)</th>
                 <th className="py-2.5 px-4 text-right">Credit (-)</th>
                 <th className="py-2.5 px-4 text-right">Running Balance</th>
@@ -304,7 +315,7 @@ export function CustomerDetailPage() {
             <tbody className="divide-y divide-slate-100">
               {filteredLedger.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-slate-400">
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
                     <p className="font-semibold text-sm">No transaction records found</p>
                     <p className="text-xs mt-1">Transactions will appear automatically when bills or payments are saved.</p>
                   </td>
@@ -313,6 +324,7 @@ export function CustomerDetailPage() {
                 filteredLedger.map((entry, index) => {
                   const saleId = entry.saleId
                   const status = ledgerEntryStatus(entry, sales)
+                  const { cleanDescription, receivedBy } = parseLedgerDetails(entry.description)
                   return (
                   <tr
                     key={entry.id}
@@ -327,7 +339,16 @@ export function CustomerDetailPage() {
                       {entry.date ? formatDate(entry.date) : '-'}
                     </td>
                     <td className="py-3 px-4 font-semibold text-slate-800 text-sm">
-                      {entry.description}
+                      {cleanDescription}
+                    </td>
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      {receivedBy ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+                          {receivedBy}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 text-xs font-medium">-</span>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-right font-semibold text-slate-900 text-sm">
                       {entry.debit > 0 ? `Rs ${entry.debit.toLocaleString()}` : '-'}

@@ -5,7 +5,7 @@ import { getBusinessSettings, DEFAULT_SETTINGS } from '@/services/sqlite.service
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Printer } from 'lucide-react'
-import { formatPKR, formatDate, roundMoney } from '@/utils/financial'
+import { formatPKR, formatDate, roundMoney, parseLedgerDetails } from '@/utils/financial'
 import type { Customer, CustomerLedgerEntry } from '@/types'
 
 interface CustomerStatementModalProps {
@@ -90,6 +90,7 @@ export function CustomerStatementModal({
                 <tr className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                   <th className="py-2 px-3">Date</th>
                   <th className="py-2 px-3">Description</th>
+                  <th className="py-2 px-3 text-center">By Hand</th>
                   <th className="py-2 px-3 text-right">Debit (Rs)</th>
                   <th className="py-2 px-3 text-right">Credit (Rs)</th>
                   <th className="py-2 px-3 text-right">Balance (Rs)</th>
@@ -98,18 +99,25 @@ export function CustomerStatementModal({
               <tbody className="divide-y divide-slate-100">
                 {ledger.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-slate-400 italic">
+                    <td colSpan={6} className="py-6 text-center text-slate-400 italic">
                       No transaction history recorded yet.
                     </td>
                   </tr>
                 ) : (
-                  ledger.map((entry) => (
+                  ledger.map((entry) => {
+                    const { cleanDescription, receivedBy } = parseLedgerDetails(entry.description)
+                    return (
                     <tr key={entry.id} className="hover:bg-slate-50">
                       <td className="py-2 px-3 text-slate-600 whitespace-nowrap">
                         {entry.date ? formatDate(entry.date) : '-'}
                       </td>
                       <td className="py-2 px-3 text-slate-800 font-medium">
-                        {entry.description}
+                        {cleanDescription}
+                      </td>
+                      <td className="py-2 px-3 text-center text-slate-700 font-medium whitespace-nowrap">
+                        {receivedBy ? (
+                          <span className="font-semibold text-blue-700">{receivedBy}</span>
+                        ) : '-'}
                       </td>
                       <td className="py-2 px-3 text-right font-semibold text-slate-900">
                         {entry.debit > 0 ? entry.debit.toLocaleString() : '-'}
@@ -121,12 +129,13 @@ export function CustomerStatementModal({
                         {entry.balance.toLocaleString()}
                       </td>
                     </tr>
-                  ))
+                    )
+                  })
                 )}
               </tbody>
               <tfoot>
                 <tr className="bg-slate-50 font-bold border-t border-slate-200 text-slate-900">
-                  <td colSpan={2} className="py-2 px-3 text-right">Summary Totals:</td>
+                  <td colSpan={3} className="py-2 px-3 text-right">Summary Totals:</td>
                   <td className="py-2 px-3 text-right text-slate-900">
                     Rs {roundMoney(ledger.reduce((sum, entry) => sum + entry.debit, 0)).toLocaleString()}
                   </td>

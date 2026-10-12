@@ -42,6 +42,7 @@ export function ReceivePaymentModal({
 }: ReceivePaymentModalProps) {
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'bank'>('cash')
+  const [receivedBy, setReceivedBy] = useState('')
   const [notes, setNotes] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -56,6 +57,7 @@ export function ReceivePaymentModal({
           : 0
       setAmount(initialAmt > 0 ? String(initialAmt) : '')
       setPaymentMethod('cash')
+      setReceivedBy('')
       setNotes(defaultNotes || (billInfo ? `Payment for Bill #${billInfo.invoiceNumber}` : ''))
       setError(null)
     }
@@ -82,6 +84,12 @@ export function ReceivePaymentModal({
       return
     }
 
+    const cleanNotes = notes.trim()
+    const cleanReceiver = receivedBy.trim()
+    const finalNotes = cleanReceiver
+      ? `[By Hand: ${cleanReceiver}]${cleanNotes ? ` ${cleanNotes}` : ''}`
+      : cleanNotes
+
     setIsSubmitting(true)
     try {
       await onSubmit({
@@ -89,7 +97,7 @@ export function ReceivePaymentModal({
         saleId: billInfo?.saleId,
         amount: numAmount,
         paymentMethod,
-        notes: notes.trim() || undefined,
+        notes: finalNotes || undefined,
       })
       onClose()
     } catch (err: unknown) {
@@ -179,6 +187,13 @@ export function ReceivePaymentModal({
             { value: 'cash', label: 'Cash Payment' },
             { value: 'bank', label: 'Bank Transfer / Online' },
           ]}
+        />
+
+        <Input
+          label="Received By / By Hand (Optional)"
+          placeholder="e.g. Umar, Ali, or any name..."
+          value={receivedBy}
+          onChange={(e) => setReceivedBy(e.target.value)}
         />
 
         <Textarea

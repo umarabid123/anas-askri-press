@@ -1,4 +1,4 @@
-import { getBusinessSettings, getCustomerLedger, setCustomerOpeningBalance } from '@/services/sqlite.service'
+import { getBusinessSettings, getCustomerLedger, receivePayment, setCustomerOpeningBalance } from '@/services/sqlite.service'
 import { printDocument } from '@/utils/printing'
 import { useState, useRef, useEffect } from 'react'
 import {
@@ -24,7 +24,7 @@ import { createSale, updateSale, getSales } from '@/services/sqlite.service'
 import { saleToInvoiceData, previousInvoiceBalance } from '../invoice-data'
 import { editBlockReason, startNewBill } from '../bill-actions'
 import { prepareBill } from '@/utils/billing'
-import { formatPKR } from '@/utils/financial'
+import { formatPKR, roundMoney } from '@/utils/financial'
 import { cn } from '@/utils/cn'
 import { AddCustomerModal } from '@/features/customers/components/AddCustomerModal'
 import { BillPreviewModal } from '../components/BillPreviewModal'
@@ -223,10 +223,20 @@ export function NewBillPage() {
     saveLock.current = true
     useCartStore.getState().setSavingBill(true)
     setIsSaving(true)
+    let oldUdharReceived = 0
     try {
       if (editingSale) {
         const reason = editBlockReason(editingSale.id, await getSales())
         if (reason) { setEditCheck({ id: editingSale.id, reason }); return null }
+      }
+
+      // Money above this bill's total goes against the customer's previous udhar as a separate receipt
+      const billPaid = Math.min(paidAmount, prepareBill(items, 0, 0).total)
+      const oldUdharPaid = roundMoney(paidAmount - billPaid)
+      if (oldUdharPaid > 0) {
+        if (editingSale) throw new Error('Payment received cannot be more than the bill total. Receive old udhar from the customer page.')
+        if (!customer?.id) throw new Error('Payment received cannot be more than the bill total. Select a customer to receive old udhar.')
+        if (oldUdharPaid > effectiveOpeningBalance) throw new Error(`Payment received cannot be more than the total amount (${formatPKR(grandTotal)}).`)
       }
 
       // If customer is selected and opening balance was explicitly entered or adjusted
@@ -249,7 +259,12 @@ export function NewBillPage() {
         }
       }
 
-      const bill = prepareBill(items, 0, paidAmount)
+      const bill = prepareBill(items, 0, billPaid)
+      // Posted before the bill so the invoice's previous balance already reflects it
+      if (oldUdharPaid > 0 && currentCustomer?.id) {
+        await receivePayment({ customerId: currentCustomer.id, amount: oldUdharPaid, paymentMethod, notes: 'Old udhar received with new bill' })
+        oldUdharReceived = oldUdharPaid
+      }
       const validItems = bill.items
       const input = {
         ...bill,
@@ -283,7 +298,7 @@ export function NewBillPage() {
       const preview = saved ? saleToInvoiceData(saved, currentCustomer) : invoiceData
       if (currentCustomer?.id) {
         try { preview.previousBalance = previousInvoiceBalance(preview, await getCustomerLedger(currentCustomer.id)) }
-        catch (err) { preview.previousBalance = effectiveOpeningBalance }
+        catch (err) { preview.previousBalance = roundMoney(effectiveOpeningBalance - oldUdharPaid) }
       }
       resetCart()
       setOpeningBalanceInput('')
@@ -298,7 +313,13 @@ export function NewBillPage() {
 
       return invoiceNumber
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
+      let msg = err instanceof Error ? err.message : String(err)
+      if (oldUdharReceived > 0) {
+        // The old udhar receipt is already saved; drop it from the payment so a retry doesn't record it twice
+        msg += ` (${formatPKR(oldUdharReceived)} old udhar payment was already recorded.)`
+        setPaidAmount(roundMoney(paidAmount - oldUdharReceived))
+        refreshCustomers()
+      }
       setErrorMessage(msg)
       toast.error(msg)
       if (editingSale) {
@@ -765,6 +786,14 @@ export function NewBillPage() {
                 />
               </div>
             </div>
+
+            {!editingSale && customer && total > 0 && paidAmount > total && (
+              <p className={cn('-mt-2 text-xs font-semibold', paidAmount > grandTotal ? 'text-red-600' : 'text-blue-700')}>
+                {paidAmount > grandTotal
+                  ? `Payment cannot be more than the total amount (${formatPKR(grandTotal)}).`
+                  : `${formatPKR(total)} for this bill + ${formatPKR(paidAmount - total)} towards old udhar`}
+              </p>
+            )}
 
             <div className="flex flex-wrap justify-between items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
               <div className="flex flex-col">

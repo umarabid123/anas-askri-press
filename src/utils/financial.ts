@@ -97,3 +97,29 @@ export function generateInvoiceNumber(prefix: string, sequenceNumber: number): s
   const padded = String(sequenceNumber).padStart(4, '0')
   return `${prefix}-${padded}`
 }
+
+/**
+ * Extracts "By Hand / Received By" person name from a ledger description if recorded,
+ * and returns the cleaned description alongside the receiver's name.
+ */
+export function parseLedgerDetails(description?: string | null): { cleanDescription: string; receivedBy: string | null } {
+  if (!description) return { cleanDescription: '', receivedBy: null }
+  const match = description.match(/(?:\[(?:By Hand|Received By|By):\s*([^\]]+)\]|(?:By Hand|Received By):\s*([^•\-\n\r]+))/i)
+  if (match) {
+    const receivedBy = (match[1] || match[2] || '').trim()
+    const cleanDescription = description
+      .replace(/\[(?:By Hand|Received By|By):\s*[^\]]+\]/gi, '')
+      .replace(/(?:By Hand|Received By):\s*[^•\-\n\r]+/gi, '')
+      .replace(/\s*-\s*-\s*/g, ' - ')
+      .replace(/\s*•\s*•\s*/g, ' • ')
+      .trim()
+      .replace(/[-•]\s*$/, '')
+      .trim()
+    return {
+      cleanDescription: cleanDescription || description,
+      receivedBy: receivedBy || null,
+    }
+  }
+  return { cleanDescription: description, receivedBy: null }
+}
+
